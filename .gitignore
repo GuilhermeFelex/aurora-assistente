@@ -30,6 +30,7 @@ public/mediapipe/
 .env
 aurora/memoria.json
 aurora/memoria.json.tmp
+aurora/memoria.migrada.json
 aurora/sessao.json
 aurora/aurora.log
 aurora/**/*.privado.md

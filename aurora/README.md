@@ -9,7 +9,7 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
 | `personalidade.md` | Quem ela é, o tom, o tamanho das respostas, o que nunca fazer | Recarregue a página (F5) |
 | `regras.md` | Regras extras suas ("sempre em reais", "prefira fontes brasileiras") | F5 |
 | `conhecimento/*.md` | Coisas que ela deve saber sobre você, seu trabalho, seus projetos | F5 |
-| `memoria.json` | O que ela mesma decidiu guardar nas conversas (criado automaticamente) | F5 |
+| Memória | O que ela mesma decidiu guardar nas conversas: fica na nota `07_IA_E_AGENTES/AURORA/memoria-da-aurora.md` do brain-aurora (ou em `memoria.json`, sem o cofre) | F5 |
 
 > **Privacidade:** o repositório no GitHub é público. Arquivos que terminam em
 > `.privado.md` (por exemplo `conhecimento/sobre-mim.privado.md`), o `memoria.json`
@@ -45,7 +45,11 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
     "elevenlabsVoiceId": "EXAVITQu4vr4xnSDxMaL" // voz usada se você tiver chave da ElevenLabs
   },
 
-  "memoria": { "ativa": true, "limite": 200 }, // liga/desliga a memória e quantos itens guardar
+  "memoria": {
+    "ativa": true, "limite": 200,              // liga/desliga a memória e quantos itens guardar
+    "local": "brain",                          // "brain" = guarda numa nota do cofre; "local" = aurora/memoria.json
+    "notaBrain": "07_IA_E_AGENTES/AURORA/memoria-da-aurora.md"
+  },
 
   "conversa": { "retomarMinutos": 60 },       // retoma a conversa após recarregar/reiniciar, se for desse tempo; 0 = nunca
 
@@ -123,7 +127,27 @@ você pode pedir:
 - "Aurora, o que você lembra sobre mim?"
 - "Aurora, esquece o que eu falei sobre o café."
 
-Tudo fica em `memoria.json`, que você pode abrir e editar à mão.
+Com o brain-aurora conectado, tudo fica na nota **Memória da Aurora**
+(`07_IA_E_AGENTES/AURORA/memoria-da-aurora.md`), que você pode abrir e editar no
+Obsidian: uma linha por fato, no formato `- texto (AAAA-MM-DD) ^m12`. Linhas que
+você escrever sem o `^m` ganham um número sozinhas. Sem o cofre, ela usa
+`aurora/memoria.json`. Na primeira vez, o que estava no `memoria.json` é movido
+para a nota (o arquivo antigo fica guardado como `memoria.migrada.json`).
+
+## Conhecimento sob demanda
+
+Um arquivo de `conhecimento/` que tenha a marca `<!-- sob-demanda -->` não vai em
+toda conversa: ela só vê o nome e o assunto, e abre o conteúdo (ferramenta
+`consultar`) quando a pergunta precisar. Use para material longo de referência,
+como o `sobre-a-aurora.md`. Arquivos na pasta `conhecimento/consulta/` funcionam
+do mesmo jeito.
+
+## Formato TOON
+
+Listas que ela recebe das ferramentas (resultados de busca no brain, notas de
+uma área, memórias, material de consulta) vêm no formato
+[TOON](https://github.com/toon-format/spec): os campos aparecem uma vez e cada
+item ocupa uma linha, o que gasta bem menos tokens que JSON.
 
 ## Voz melhor (opcional)
 

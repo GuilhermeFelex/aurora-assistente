@@ -29,6 +29,8 @@ recarregue a página.
 - Permissões por ferramenta no `perfil.json`, modo sem janela e início com o Windows.
 - Gestos extras: mão aberta parada faz ela calar, joinha responde "sim".
 - Testes automáticos: `npm test`.
+- Memória guardada no próprio cofre (nota "Memória da Aurora"), conhecimento sob demanda e saídas de ferramentas em formato TOON, para gastar menos tokens.
+- Início mais leve: o reconhecimento de mãos e o cliente da API direta só carregam quando usados.
 
 ## Requisitos
 

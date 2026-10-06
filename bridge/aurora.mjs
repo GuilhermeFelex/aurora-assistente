@@ -17,9 +17,11 @@
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { existsSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { brainEnabled, vaultPath } from './brain.mjs'
+import { toonTable } from './toon.mjs'
 
 // AURORA_DIR can be pointed elsewhere (the tests use a scratch copy).
 export const AURORA_DIR =
@@ -94,6 +96,9 @@ function knowledge(profile) {
   if (!existsSync(dir)) return ''
   const parts = []
   for (const name of readdirSync(dir).filter((n) => n.endsWith('.md')).sort()) {
+    // Files marked <!-- sob-demanda --> are reference material: listed in the
+    // prompt, opened with `consultar` only when needed.
+    if (onDemand(join(dir, name))) continue
     const body = readMd(join(dir, name))
     if (body) parts.push(fill(body, profile))
   }
@@ -102,7 +107,33 @@ function knowledge(profile) {
 
 /* ------------------------------------------------------------------ memory */
 
-function readMemories() {
+/**
+ * Where her memory lives.
+ *
+ * With the brain-aurora vault available (and memoria.local not "local"), it is
+ * one Markdown note in the vault, so it can be read, searched and edited in
+ * Obsidian like everything else:
+ *
+ *   ## Fatos
+ *   - Prefere café sem açúcar. (2026-10-06) ^m1
+ *
+ * "^m1" is a native Obsidian block id, which doubles as the memory's number.
+ * Without the vault it falls back to aurora/memoria.json, as before. The
+ * first time the vault is used, anything in memoria.json is moved over and
+ * the JSON is kept as memoria.migrada.json — nothing is deleted.
+ */
+const DEFAULT_MEMORY_NOTE = '07_IA_E_AGENTES/AURORA/memoria-da-aurora.md'
+
+function memoryNote(profile) {
+  if (profile.memoria?.local === 'local' || !brainEnabled(profile)) return null
+  return join(vaultPath(profile), profile.memoria?.notaBrain || DEFAULT_MEMORY_NOTE)
+}
+
+function today(profile) {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: profile.usuario?.fusoHorario || 'America/Sao_Paulo' })
+}
+
+function readJsonMemories() {
   try {
     const list = JSON.parse(readFileSync(MEMORY_FILE, 'utf8'))
     return Array.isArray(list) ? list.filter((m) => m && typeof m.texto === 'string') : []
@@ -111,19 +142,167 @@ function readMemories() {
   }
 }
 
-function writeMemories(list) {
-  // Write-then-rename, so a crash mid-write cannot leave half a JSON file.
-  const tmp = `${MEMORY_FILE}.tmp`
-  writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n', 'utf8')
-  renameSync(tmp, MEMORY_FILE)
+const BULLET = /^- (.+?)(?: \((\d{4}-\d{2}-\d{2})\))?(?: \^m(\d+))?\s*$/
+
+/** The "## Fatos" bullets of the vault note; lines added by hand get numbers on the next write. */
+export function parseMemoryNote(text) {
+  const lines = text.split(/\r?\n/)
+  const start = lines.findIndex((l) => /^##\s+Fatos\s*$/i.test(l))
+  if (start < 0) return []
+  const out = []
+  for (let i = start + 1; i < lines.length && !/^#{1,6}\s/.test(lines[i]); i++) {
+    const m = BULLET.exec(lines[i].trim())
+    if (m) out.push({ id: m[3] ? Number(m[3]) : null, texto: m[1].trim(), quando: m[2] ?? null })
+  }
+  return out
+}
+
+function renderMemoryNote(list, previous, profile) {
+  const date = today(profile)
+  const bullets = list.map((m) => `- ${m.texto}${m.quando ? ` (${String(m.quando).slice(0, 10)})` : ''} ^m${m.id}`)
+  if (previous && /^##\s+Fatos\s*$/im.test(previous)) {
+    // Keep everything the user wrote around the list; only the list and the
+    // update date change.
+    const lines = previous.split(/\r?\n/)
+    const start = lines.findIndex((l) => /^##\s+Fatos\s*$/i.test(l))
+    let end = start + 1
+    while (end < lines.length && !/^#{1,6}\s/.test(lines[end]) && !/^\[\[/.test(lines[end])) end++
+    const out = [...lines.slice(0, start + 1), '', ...bullets, '', ...lines.slice(end)]
+    return out.join('\n').replace(/^data_atualizacao: .*$/m, `data_atualizacao: "${date}"`)
+  }
+  return [
+    '---',
+    'titulo: "Memória da Aurora"',
+    'tipo: "memoria"',
+    'status: "ativo"',
+    `data_criacao: "${date}"`,
+    `data_atualizacao: "${date}"`,
+    'tags: ["aurora", "memoria"]',
+    'projeto: null',
+    'produto: null',
+    'cliente: null',
+    'fonte: ["conversas com a Aurora"]',
+    'relacionados: []',
+    'confidencialidade: "interno"',
+    '---',
+    '',
+    '# Memória da Aurora',
+    '',
+    'Fatos duradouros que a Aurora guardou nas conversas por voz. Ela lê esta nota no começo de cada conversa.',
+    'Pode editar à vontade: uma linha por fato, no formato `- texto (AAAA-MM-DD) ^m12`. Linhas sem o `^m` ganham um número sozinhas.',
+    '',
+    '## Fatos',
+    '',
+    ...bullets,
+    '',
+    '[[07_IA_E_AGENTES/ia-e-agentes|IA e agentes]]',
+    '',
+  ].join('\n')
+}
+
+/** Give hand-written lines a number, keeping existing ones. */
+function numbered(list) {
+  let next = list.reduce((n, m) => Math.max(n, Number(m.id) || 0), 0)
+  return list.map((m) => (m.id ? m : { ...m, id: ++next }))
+}
+
+export function readMemories(profile = loadProfile()) {
+  const note = memoryNote(profile)
+  if (!note) return readJsonMemories()
+  let list = []
+  try {
+    list = parseMemoryNote(readFileSync(note, 'utf8'))
+  } catch {
+    list = []
+  }
+  // One-time move of the old JSON memory into the vault.
+  const old = readJsonMemories()
+  if (old.length) {
+    const have = new Set(list.map((m) => m.texto.toLowerCase()))
+    const used = new Set(list.map((m) => m.id).filter(Boolean))
+    const moved = old
+      .filter((m) => !have.has(m.texto.toLowerCase()))
+      .map((m) => {
+        const id = Number(m.id) || null
+        const keep = id && !used.has(id)
+        if (keep) used.add(id)
+        return { ...m, id: keep ? id : null }
+      })
+    const merged = numbered([...list, ...moved])
+    writeMemories(merged, profile)
+    try {
+      renameSync(MEMORY_FILE, join(AURORA_DIR, 'memoria.migrada.json'))
+      console.log(`[aurora] memória movida para o brain-aurora (${relative(vaultPath(profile), note)})`)
+    } catch {
+      /* the merge already happened; the rename only stops it repeating */
+    }
+    return merged
+  }
+  return numbered(list)
+}
+
+export function writeMemories(list, profile = loadProfile()) {
+  const note = memoryNote(profile)
+  const target = note ?? MEMORY_FILE
+  const body = note
+    ? renderMemoryNote(numbered(list), existsSync(note) ? readFileSync(note, 'utf8') : null, profile)
+    : JSON.stringify(list, null, 2) + '\n'
+  // Write-then-rename, so a crash mid-write cannot leave half a file.
+  mkdirSync(dirname(target), { recursive: true })
+  const tmp = `${target}.tmp`
+  writeFileSync(tmp, body, 'utf8')
+  renameSync(tmp, target)
+}
+
+/* --------------------------------------------------- on-demand knowledge */
+
+/**
+ * Reference material that does not need to ride along on every turn:
+ * aurora/conhecimento/consulta/*.md. Only the list (name + first heading) goes
+ * into the prompt; she opens a file with `consultar` when a question needs it.
+ */
+const REFERENCE_DIR = () => join(AURORA_DIR, 'conhecimento', 'consulta')
+const ON_DEMAND = /<!--\s*sob-demanda\s*-->/i
+
+function onDemand(path) {
+  try {
+    return ON_DEMAND.test(readFileSync(path, 'utf8'))
+  } catch {
+    return false
+  }
+}
+
+/** consulta/*.md, plus any conhecimento/*.md marked <!-- sob-demanda -->. */
+function referencePaths() {
+  const out = new Map()
+  const consulta = REFERENCE_DIR()
+  if (existsSync(consulta)) {
+    for (const n of readdirSync(consulta).filter((n) => n.endsWith('.md'))) out.set(n.replace(/\.md$/, ''), join(consulta, n))
+  }
+  const base = join(AURORA_DIR, 'conhecimento')
+  if (existsSync(base)) {
+    for (const n of readdirSync(base).filter((n) => n.endsWith('.md'))) {
+      if (onDemand(join(base, n))) out.set(n.replace(/\.md$/, ''), join(base, n))
+    }
+  }
+  return out
+}
+
+function referenceFiles() {
+  return [...referencePaths()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([arquivo, path]) => {
+      const body = readMd(path)
+      const title = /^#\s+(.+)$/m.exec(body)?.[1]?.trim() ?? arquivo
+      return { arquivo, assunto: title }
+    })
 }
 
 const text = (t, isError = false) => ({ content: [{ type: 'text', text: t }], ...(isError ? { isError } : {}) })
 
 /**
- * Her long-term memory as tools. Writes only ever touch aurora/memoria.json,
- * so it is allowed in read-only mode: remembering a preference changes nothing
- * outside her own notebook.
+ * Her long-term memory (and the on-demand knowledge) as tools. Writes only
+ * touch her own memory note / file, so they are allowed in read-only mode.
  */
 export function memoryServer() {
   return createSdkMcpServer({
@@ -132,26 +311,27 @@ export function memoryServer() {
     instructions:
       'Memória de longo prazo da Aurora. Use `lembrar` quando o usuário contar algo duradouro ' +
       'sobre si (preferências, pessoas, datas, gostos) ou pedir para você lembrar de algo. ' +
-      'Use `esquecer` quando ele pedir. Não anuncie que salvou; no máximo confirme em poucas palavras.',
+      'Use `esquecer` quando ele pedir. Não anuncie que salvou; no máximo confirme em poucas palavras. ' +
+      'Use `consultar` para abrir um arquivo de consulta listado no seu prompt.',
     alwaysLoad: true,
     tools: [
       tool(
         'lembrar',
         'Guarda um fato duradouro sobre o usuário ou um pedido explícito de lembrar algo. ' +
-          'Uma frase curta e autossuficiente, em português. Não guarde coisas passageiras.',
+          'Uma frase curta e autossuficiente, em português. Não guarde coisas passageiras nem segredos.',
         { texto: z.string().min(3).max(500).describe('O fato, em uma frase. Ex.: "Prefere café sem açúcar."') },
         async ({ texto }) => {
           const profile = loadProfile()
           if (profile.memoria?.ativa === false) return text('A memória está desligada no perfil.', true)
-          const list = readMemories()
-          const clean = texto.trim()
+          const list = readMemories(profile)
+          const clean = texto.trim().replace(/\s+/g, ' ').replace(/\^m\d+/g, '')
           if (list.some((m) => m.texto.toLowerCase() === clean.toLowerCase())) {
             return text('Isso já estava guardado.')
           }
           const id = list.reduce((n, m) => Math.max(n, Number(m.id) || 0), 0) + 1
-          list.push({ id, texto: clean, quando: new Date().toISOString() })
+          list.push({ id, texto: clean, quando: today(profile) })
           const limit = Math.max(1, Number(profile.memoria?.limite) || 200)
-          writeMemories(list.slice(-limit))
+          writeMemories(list.slice(-limit), profile)
           console.log(`[aurora] lembrar #${id}: ${clean}`)
           return text(`Guardado (#${id}).`)
         },
@@ -161,20 +341,34 @@ export function memoryServer() {
         'Apaga memórias. Passe o número (#) ou um trecho do texto da memória.',
         { alvo: z.string().min(1).describe('Número da memória, ou um trecho do texto dela.') },
         async ({ alvo }) => {
-          const list = readMemories()
+          const profile = loadProfile()
+          const list = readMemories(profile)
           const q = alvo.trim().replace(/^#/, '').toLowerCase()
           const keep = list.filter((m) => String(m.id) !== q && !m.texto.toLowerCase().includes(q))
           const gone = list.length - keep.length
           if (!gone) return text('Nenhuma memória corresponde a isso.')
-          writeMemories(keep)
+          writeMemories(keep, profile)
           console.log(`[aurora] esquecer "${alvo}": ${gone} removida(s)`)
           return text(`${gone} memória(s) apagada(s).`)
         },
       ),
       tool('listar_memorias', 'Lista tudo o que está guardado na memória, com os números.', {}, async () => {
         const list = readMemories()
-        return text(list.length ? list.map((m) => `#${m.id} ${m.texto}`).join('\n') : 'A memória está vazia.')
+        return text(list.length ? toonTable('memorias', list, ['id', 'texto', 'quando']) : 'A memória está vazia.')
       }),
+      tool(
+        'consultar',
+        'Abre um arquivo de consulta da pasta aurora/conhecimento/consulta (os nomes estão no seu prompt).',
+        { arquivo: z.string().describe('Nome do arquivo, sem .md. Ex.: "sobre-a-aurora".') },
+        async ({ arquivo }) => {
+          const name = String(arquivo).replace(/\.md$/i, '').replace(/[^\w.-]/g, '')
+          const full = referencePaths().get(name)
+          if (!name || !full) {
+            return text(`Arquivo não encontrado. Disponíveis: ${referenceFiles().map((f) => f.arquivo).join(', ') || 'nenhum'}.`, true)
+          }
+          return text(fill(readMd(full), loadProfile()))
+        },
+      ),
     ],
   })
 }
@@ -223,13 +417,21 @@ export function personaPrompt(profile = loadProfile()) {
   const known = knowledge(profile)
   if (known) sections.push(`# O que você sabe\n\n${known}`)
 
+  const refs = referenceFiles()
+  if (refs.length) {
+    sections.push(
+      '# Material de consulta (abra com a ferramenta `consultar` só quando precisar)\n\n' +
+        toonTable('consulta', refs, ['arquivo', 'assunto']),
+    )
+  }
+
   if (profile.memoria?.ativa !== false) {
-    const mem = readMemories()
+    const mem = readMemories(profile)
     sections.push(
       '# Sua memória\n\n' +
         (mem.length
           ? 'Coisas que você guardou em conversas anteriores (use com naturalidade, sem citar os números):\n' +
-            mem.map((m) => `- #${m.id} ${m.texto}`).join('\n')
+            toonTable('memorias', mem, ['id', 'texto', 'quando'])
           : 'Ainda vazia. Use a ferramenta `lembrar` para guardar fatos duradouros sobre o usuário.'),
     )
   }

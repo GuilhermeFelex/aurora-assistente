@@ -31,7 +31,9 @@
 
   "memoria": {
     "ativa": true,
-    "limite": 200
+    "limite": 200,
+    "local": "brain",
+    "notaBrain": "07_IA_E_AGENTES/AURORA/memoria-da-aurora.md"
   },
 
   "conversa": {

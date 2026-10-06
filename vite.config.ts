@@ -32,6 +32,24 @@ export default defineConfig({
   define: {
     __AURORA__: JSON.stringify(auroraProfile()),
   },
+  optimizeDeps: {
+    // Aurora: name the dependencies up front so Vite pre-bundles them when the
+    // server starts. Discovered lazily, they were bundled only after the page
+    // had loaded — which forced a full reload of the interface on first start
+    // (the "client connected / disconnected" pair in the log).
+    include: [
+      'react',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'three',
+      '@react-three/fiber',
+      '@react-three/postprocessing',
+      'postprocessing',
+      'framer-motion',
+      'zustand',
+      'dompurify',
+    ],
+  },
   server: {
     // Honour PORT so a second instance can run alongside the first. The bridge
     // only accepts sockets from localhost:5173-5199, so stay inside that range

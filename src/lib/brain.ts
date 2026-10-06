@@ -1,5 +1,4 @@
 import { BACKEND } from '../config'
-import * as direct from './anthropic'
 import * as bridge from './bridge'
 import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
@@ -22,6 +21,15 @@ export type { ConnectionState } from './bridge'
 
 export const usingBridge = BACKEND === 'bridge'
 
+/**
+ * Aurora: the direct-API client (and the Anthropic SDK behind it) is loaded
+ * only on the direct path. With the bridge — the default — it is never needed,
+ * so it no longer weighs on start-up.
+ */
+let direct: typeof import('./anthropic') | null = null
+const loadDirect = async () => (direct ??= await import('./anthropic'))
+if (!usingBridge) void loadDirect()
+
 /** Conversation state lives in the bridge session, so history is only threaded
  *  through on the direct path. */
 export async function ask(
@@ -31,7 +39,7 @@ export async function ask(
 ): Promise<{ text: string; tools: string[] }> {
   return usingBridge
     ? bridge.ask(prompt, handlers)
-    : direct.ask([...history, { role: 'user', content: prompt }], handlers)
+    : (await loadDirect()).ask([...history, { role: 'user', content: prompt }], handlers)
 }
 
 export async function warm(): Promise<void> {
@@ -92,7 +100,7 @@ export function watchCapture(
  */
 export function cancel(): void {
   if (usingBridge) bridge.cancel()
-  else direct.cancel()
+  else direct?.cancel()
 }
 
 /** The older name for `cancel()`. */
@@ -127,5 +135,5 @@ export function watchConnection(
 
 /** Labels for the HUD's SYSTEMS rail. */
 export function connectedLabels(): string[] {
-  return usingBridge ? bridge.bridgeServers() : direct.connectedLabels()
+  return usingBridge ? bridge.bridgeServers() : (direct?.connectedLabels() ?? [])
 }

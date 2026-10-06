@@ -1,4 +1,6 @@
-import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision'
+// Aurora: the MediaPipe runtime is loaded only when hand control is switched
+// on (key G) — most sessions never use it, so it stays out of the start-up.
+import type { HandLandmarker } from '@mediapipe/tasks-vision'
 import { OneEuroPoint } from './oneEuro'
 import { holdCamera, releaseCamera } from './camera'
 
@@ -606,6 +608,7 @@ function heldAction(id: number, g: Gesture, now: number) {
 async function ensureModel() {
   if (landmarker) return landmarker
   diag.loading = true
+  const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
   try {
     const vision = await FilesetResolver.forVisionTasks(WASM_BASE)
     landmarker = await HandLandmarker.createFromOptions(vision, {
