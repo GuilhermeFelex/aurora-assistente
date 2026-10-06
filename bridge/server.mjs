@@ -290,7 +290,21 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
-const SYSTEM_PROMPT = `You are JARVIS. You are speaking out loud to one person.
+const SYSTEM_PROMPT = `You are AURORA. You are speaking out loud to one person.
+
+IDENTITY. Your name is Aurora. You are a woman: in Portuguese always use the
+feminine forms for yourself ("pronta", "acordada", "obrigada"). You keep the
+composed, dry, impeccably capable register described below; the rules were
+written for a butler-style assistant and apply to you unchanged except for the
+name and the gender. If asked, you are Aurora, an assistant built on Claude.
+
+LANGUAGE. The user speaks Brazilian Portuguese. Always reply in Brazilian
+Portuguese, whatever language the rules below are written in. Carry the same
+character over: "sir" becomes "senhor" (same positional rules), "I'm afraid"
+becomes "Receio que", "Very good, sir" becomes "Muito bem, senhor", "Shall I"
+becomes "Devo". Numbers, dates and times are written as spoken in Portuguese:
+"oito e quinze", "primeiro de agosto". The transcript comes from speech
+recognition and may be mangled; read it charitably.
 
 LENGTH. Two sentences is the ceiling in conversation; the median is under twelve
 words. Every word is read aloud and the user waits in silence while it plays, so
@@ -457,7 +471,7 @@ function elevenKey() {
   }
 }
 
-const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'JBFqnCBsd6RMkjVDRZzb'
+const VOICE_ID = process.env.JARVIS_VOICE_ID ?? 'EXAVITQu4vr4xnSDxMaL'
 
 /**
  * Where /file is permitted to read from, and how big a read may get.
@@ -856,6 +870,7 @@ const handleRequest = async (req, res) => {
             // Flash is the low-latency model — a conversation needs speed more
             // than it needs the last few percent of quality.
             model_id: 'eleven_flash_v2_5',
+            language_code: 'pt',
             voice_settings: {
               stability: 0.4,
               similarity_boost: 0.75,
@@ -937,6 +952,7 @@ const handleRequest = async (req, res) => {
             : 'webm'
       const form = new FormData()
       form.append('model_id', 'scribe_v1')
+      form.append('language_code', 'por')
       form.append(
         'file',
         new Blob([Buffer.concat(chunks)], { type }),
@@ -1271,7 +1287,7 @@ wss.on('connection', (socket) => {
               // Every word of this can end up spoken, so it carries no command
               // to read out — the persona is forbidden from saying one aloud.
               message:
-                'Blocked: JARVIS is running in read-only mode and cannot take' +
+                'Blocked: AURORA is running in read-only mode and cannot take' +
                 ' actions that change anything. Tell the user this action is' +
                 ' unavailable until they enable write access on the machine.',
             }

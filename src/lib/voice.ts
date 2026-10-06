@@ -78,7 +78,7 @@ const WAKE_DEBOUNCE = 1500
  * indication why. Better a rare false wake than a name that does not answer.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
+  /\b(?:hey|hi|ok|okay|yo|ei|oi|ol[aá]|e a[ií]|fala)?\s*(?:aurora|aurorah|aurore|arora|aurura|alrora|a urora)\b(?!'s)/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
@@ -123,7 +123,7 @@ function afterWake(text: string): string {
  * last word of a real request.
  */
 const CONTINUES =
-  /\b(and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither)$/i
+  /\b(and|or|but|so|because|since|if|when|while|that|which|who|whose|to|of|in|on|at|by|for|with|from|about|into|onto|over|under|between|through|the|a|an|my|your|his|her|its|our|their|is|are|was|were|be|been|do|does|did|have|has|had|can|could|would|should|will|shall|might|must|like|than|then|as|very|really|just|some|any|all|both|either|neither|e|ou|mas|porque|que|se|quando|de|do|da|dos|das|em|no|na|nos|nas|com|para|pra|por|pelo|pela|os|as|um|uma|meu|minha|seu|sua|muito|mais)$/i
 
 /** Trailing punctuation a transcriber emits mid-thought. */
 const TRAILS = /[,;:–—-]$/
@@ -257,7 +257,7 @@ function makeAssembler(h: {
 const norm = (s: string) =>
   s
     .toLowerCase()
-    .replace(/[^a-z0-9' ]+/g, ' ')
+    .replace(/[^a-z0-9à-ÿ' ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -267,7 +267,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  /\b(stop|wait|aurora|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|para|pare|espera|chega|cancela|sil[eê]ncio|esquece|deixa pra l|n[aã]o)\b/i
 
 /**
  * Words too common to be evidence of anything.
@@ -284,7 +284,10 @@ const STOP = new Set(
     'our their what which who how why when where do does did can could would ' +
     'should will shall not no yes if then than as about into over under out up ' +
     'down one two three first second third now here there just very really got ' +
-    'get have has had say said tell me okay ok well right').split(' '),
+    'get have has had say said tell me okay ok well right ' +
+    'o a os as um uma de do da dos das em no na nos nas e ou mas que se com para pra por ' +
+    'pelo pela eu voce você ele ela nos nós eles elas meu minha seu sua isso isto aquilo ' +
+    'qual quem como porque quando onde não nao sim agora aqui ali muito mais ja já').split(' '),
 )
 
 /**
@@ -760,7 +763,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = 'en-GB'
+    rec.lang = 'pt-BR'
     rec.onstart = () => {
       running = true
       diag.running = true

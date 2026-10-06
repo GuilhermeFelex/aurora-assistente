@@ -113,13 +113,13 @@ if (port) {
 
 vendorWasm()
 
-console.log('\nJ.A.R.V.I.S. starting — the brain and the face.\n')
+console.log('\nA.U.R.O.R.A. iniciando — o cérebro e a interface.\n')
 run('bridge', 'node', ['bridge/server.mjs'], '36', bridgeEnv)
 // npm is a shell script on most systems; call the vite binary directly so we do
 // not need shell:true (which would break the argument handling above).
 run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
 
 console.log(
-  '\nWhen it says the dev server is ready, open the URL it prints in Chrome,\n' +
-    'click INITIALISE, and say "Hey Jarvis". Ctrl-C stops everything.\n',
+  '\nQuando o servidor disser que está pronto, abra http://localhost:5173 no Chrome,\n' +
+    'clique em INITIALISE e diga "Ei Aurora". Ctrl-C desliga tudo.\n',
 )

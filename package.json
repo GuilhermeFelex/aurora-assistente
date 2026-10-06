@@ -1,8 +1,8 @@
 {
-  "name": "jarvis",
+  "name": "assistente-aurora",
   "private": true,
   "version": "0.0.0",
-  "description": "A browser voice assistant with an Iron Man holographic interface, driven by Claude Code through a small Node bridge.",
+  "description": "Aurora — assistente de voz em português com interface holográfica, movida pelo Claude Code. Fork do JARVIS de adewaskar.",
   "license": "MIT",
   "type": "module",
   "engines": {

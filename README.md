@@ -1,4 +1,62 @@
-# J.A.R.V.I.S.
+# A.U.R.O.R.A.
+
+**Aurora** é uma assistente de voz em português com interface holográfica no
+navegador. Você diz **"Ei Aurora"**, ela acorda, escuta e responde — pesquisa na
+web, mostra imagens, vídeos e notícias na tela e controla a própria interface.
+O cérebro é o **Claude Code** rodando em segundo plano, usando o seu login.
+
+> Fork do [JARVIS](https://github.com/adewaskar/jarvis) de adewaskar (licença MIT),
+> adaptado para português do Brasil e com uma nova identidade: a Aurora.
+
+## O que muda em relação ao JARVIS
+
+- Escuta e responde em **português do Brasil** (`pt-BR`).
+- Palavra de ativação: **"Ei Aurora"** (também "Oi Aurora", "Olá Aurora").
+- Personagem feminina, com voz feminina em português (Microsoft Maria ou
+  Google português do Brasil; no ElevenLabs, a voz padrão é a Sarah).
+- Interface, falas rápidas e sugestões traduzidas.
+
+## Requisitos
+
+- **Claude Code** instalado e logado (`npm install -g @anthropic-ai/claude-code`, depois `claude`).
+- **Node.js 20+** — <https://nodejs.org>
+- **Google Chrome** ou **Edge**, em uma janela normal (não em painel de pré-visualização).
+- Opcional: chave da **ElevenLabs** para voz e transcrição melhores.
+
+No Windows, se o PowerShell bloquear o `npm`, rode uma vez:
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+## Como rodar
+
+```bash
+npm run setup     # confere o que falta (não altera nada)
+npm install
+npm start         # sobe o cérebro e a interface juntos
+```
+
+Abra **http://localhost:5173** no Chrome, clique em **INITIALISE**, permita o
+microfone e diga **"Ei Aurora"**.
+
+| Tecla / frase | Faz |
+|---|---|
+| **"Ei Aurora"** | Acorda a Aurora |
+| **Espaço** | Falar sem a palavra de ativação |
+| Falar por cima | Interrompe a resposta |
+| **V** | Troca a voz |
+| **Esc** | Manda descansar |
+| **D** | Diagnóstico |
+| **T** | Teste de áudio |
+
+Por padrão ela roda em **modo somente leitura**: pesquisa e mostra, mas não envia,
+apaga nem clica em nada. `npm start -- --writes` libera ações reais — leia
+`decideTool()` em `bridge/server.mjs` antes.
+
+As variáveis de ambiente continuam com o prefixo `JARVIS_` (por compatibilidade).
+
+---
+
+## Documentação original (JARVIS, em inglês)
+
 
 A browser voice assistant with an Iron Man holographic interface. Say
 **"Hey Jarvis"**, he wakes, listens, and does real things through your tools —

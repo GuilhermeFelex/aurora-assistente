@@ -162,7 +162,7 @@ const MAX_UNSPOKEN = 220
 // Voice selection
 // ---------------------------------------------------------------------------
 
-const VOICE_PREF_KEY = 'jarvis.voice'
+const VOICE_PREF_KEY = 'aurora.voice'
 
 /**
  * Rank installed voices by how close they are to the character: a British
@@ -189,8 +189,16 @@ function score(v: SpeechSynthesisVoice): number {
   if (n.includes('premium')) s += 30
   else if (n.includes('enhanced')) s += 20
 
-  if (/en[-_]gb/i.test(v.lang)) s += 25
-  else if (/^en/i.test(v.lang)) s += 5
+  // Portuguese (Brazil) voices, female first: Windows ships Microsoft Maria,
+  // Chrome ships Google português do Brasil. Male voices rank last.
+  if (/^pt/i.test(v.lang)) {
+    if (/maria|francisca|thalita|luciana|leila|yara|brenda|giovanna|manuela|elza|leticia|let[ií]cia/.test(n)) s += 100
+    else if (n.includes('google')) s += 90
+    else if (/daniel|ant[oô]nio|donato|f[aá]bio|humberto|j[uú]lio|nicolau|val[eé]rio/.test(n)) s += 10
+    else s += 50
+  }
+  if (/pt[-_]br/i.test(v.lang)) s += 25
+  else if (/^pt/i.test(v.lang)) s += 5
 
   // Voices that clearly aren't a butler.
   if (/grandma|grandpa|bubbles|jester|bells|boing|whisper|zarvox|superstar|trinoids|wobble|bahh|organ|cellos|bad news|good news/.test(n)) {
@@ -212,7 +220,7 @@ const USABLE = 40
 export function candidateVoices(): SpeechSynthesisVoice[] {
   return speechSynthesis
     .getVoices()
-    .filter((v) => /^en/i.test(v.lang))
+    .filter((v) => /^pt/i.test(v.lang))
     .map((v) => ({ v, s: score(v) }))
     .filter((x) => x.s >= USABLE)
     .sort((a, b) => b.s - a.s)
@@ -236,7 +244,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
     localStorage.removeItem(VOICE_PREF_KEY)
   }
 
-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
+  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^pt/i.test(v.lang)) ?? null
   return cachedVoice
 }
 
@@ -323,7 +331,7 @@ function shape(text: string): string {
       // The vocative wants its comma — that small beat before "sir" does most
       // of the characterisation. Anchored to a following pause or end of line
       // so the honorific is left alone: "Sir Isaac Newton" is not a vocative.
-      .replace(/([^,\s])\s+(sir)(\s*[.,!?;:]|\s*$)/gi, '$1, $2$3')
+      .replace(/([^,\s])\s+(sir|senhor)(\s*[.,!?;:]|\s*$)/gi, '$1, $2$3')
       .replace(/\s+/g, ' ')
       .trim()
   )
@@ -477,7 +485,7 @@ export function createSpeaker(): Speaker {
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
+      u.lang = voice?.lang ?? 'pt-BR'
       // Deliberate, and deliberately invariant — the character's pace does not
       // change with stakes, and that steadiness is most of the effect. This
       // lands around 130 wpm, below the median for film dialogue.
