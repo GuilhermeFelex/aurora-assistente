@@ -18,6 +18,7 @@ Use isto quando o usuário perguntar como você funciona, como configurar algo o
 - Duas partes, que sobem juntas:
   - A interface (o "rosto"): a página no Chrome com o reator animado. Escuta o microfone, transforma a fala em texto, fala as respostas e mostra painéis.
   - O cérebro (a "ponte"): um processo Node no computador (porta 8787) que recebe o texto e o envia ao Claude, usando o login do Claude Code do usuário. Não precisa de chave de API; o uso conta na assinatura do Claude dele.
+  - Motor: o campo "motor" do perfil.json escolhe quem pensa — "claude" (padrão, Claude Code) ou "codex" (Codex, com o login do ChatGPT do usuário; ele precisa ter rodado `codex` uma vez para entrar). Nenhum dos dois usa chave de API. Com o Codex a resposta chega inteira de uma vez (começa a falar um pouco depois) e as integrações extras vêm do ~/.codex/config.toml. Para trocar: editar "motor" e reiniciar com Iniciar Aurora.bat.
 - Enquanto o processo estiver rodando (a janela do "Iniciar Aurora.bat", ou em segundo plano), você funciona. Se ele for encerrado, a página continua bonita, mas você não responde.
 
 ## Como ligar

@@ -29,6 +29,7 @@ import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 import {
   AURORA_DIR,
+  engineOf,
   loadProfile,
   memoryServer,
   permissionOverride,
@@ -37,6 +38,7 @@ import {
   sessionToResume,
 } from './aurora.mjs'
 import { brainEnabled, brainPrompt, brainServer } from './brain.mjs'
+import { handleToolRequest } from './toolhub.mjs'
 
 // Secrets such as ELEVENLABS_API_KEY can live in a .env file at the project
 // root (never committed — see .gitignore). Variables already set in the shell
@@ -673,6 +675,9 @@ function corsFor(req) {
 const http = await import('node:http')
 
 const handleRequest = async (req, res) => {
+  // Aurora's tools for out-of-process engines (Codex) — localhost only, no Origin.
+  if (req.url?.startsWith('/aurora-tools/') && (await handleToolRequest(req, res))) return
+
   const origin = req.headers.origin
   if (origin && !originAllowed(origin)) {
     console.warn(`[jarvis] refused http request from origin ${origin}`)
@@ -1016,7 +1021,11 @@ console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
 console.log(
   `[jarvis] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
 )
-console.log(`[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · modelo ${MODEL} · esforço ${EFFORT}`)
+console.log(
+  engineOf(PROFILE) === 'codex'
+    ? `[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · motor Codex (ChatGPT)${PROFILE.codex?.modelo ? ` · modelo ${PROFILE.codex.modelo}` : ''}`
+    : `[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · motor Claude · modelo ${MODEL} · esforço ${EFFORT}`,
+)
 console.log(
   brainEnabled(PROFILE)
     ? '[aurora] brain-aurora conectado'
@@ -1072,8 +1081,33 @@ const RESULT_FAILURES = {
   default: 'The turn ended without an answer.',
 }
 
-wss.on('connection', (socket) => {
+wss.on('connection', async (socket) => {
   console.log('[jarvis] client connected')
+
+  // Motor escolhido no perfil.json ("claude" ou "codex"), relido a cada conexão.
+  const connProfile = loadProfile()
+  if (engineOf(connProfile) === 'codex') {
+    PERMS_PROFILE = connProfile
+    try {
+      const { runCodexConnection } = await import('./engine-codex.mjs')
+      return runCodexConnection(socket, {
+        profile: connProfile,
+        decideTool,
+        operationalPrompt,
+        allowWrites: ALLOW_WRITES,
+        port: PORT,
+      })
+    } catch (err) {
+      console.error('[aurora] não deu para carregar o motor Codex:', err)
+      socket.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'O motor Codex não carregou. Rode "npm install" e reinicie a Aurora, ou volte "motor" para "claude" no perfil.json.',
+        }),
+      )
+      return socket.close()
+    }
+  }
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.

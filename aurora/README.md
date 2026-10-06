@@ -5,7 +5,7 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
 
 | Arquivo | O que define | Quando vale |
 |---|---|---|
-| `perfil.json` | Nomes, como ela te chama, palavras de ativação, modelo, voz, memória | Reinicie a Aurora |
+| `perfil.json` | Nomes, como ela te chama, palavras de ativação, motor, modelo, voz, memória | Reinicie a Aurora |
 | `personalidade.md` | Quem ela é, o tom, o tamanho das respostas, o que nunca fazer | Recarregue a página (F5) |
 | `regras.md` | Regras extras suas ("sempre em reais", "prefira fontes brasileiras") | F5 |
 | `conhecimento/*.md` | Coisas que ela deve saber sobre você, seu trabalho, seus projetos | F5 |
@@ -34,6 +34,9 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
     "saudacoes": ["ei", "oi", "olá", ...],     // o que pode vir antes do nome
     "exigirSaudacao": false                    // true = só acorda com "ei aurora", nunca só "aurora"
   },
+
+  "motor": "claude",                          // "claude" (Claude Code) ou "codex" (ChatGPT) — veja abaixo
+  "codex": { "modelo": "", "esforco": "medium" }, // só vale com o motor codex; modelo vazio = o padrão do Codex
 
   "modelo": {
     "nome": "claude-sonnet-5",                 // "claude-opus-5" = mais inteligente, porém mais lento
@@ -79,6 +82,25 @@ Cada regra é o nome de uma integração ou um padrão com `*`:
 
 Exemplo: `"permitir": ["spotify"], "bloquear": ["mcp__spotify__apagar*"]` deixa ela
 tocar música mesmo no modo somente leitura, mas nunca apagar playlists.
+
+## Motor: Claude ou ChatGPT (Codex)
+
+A Aurora pode pensar com dois "cérebros", os dois **sem chave de API** — cada um usa
+o login que você já tem no computador:
+
+| `"motor"` | Usa | Login |
+|---|---|---|
+| `"claude"` (padrão) | Claude Code | sua conta do Claude |
+| `"codex"` | Codex (ChatGPT) | sua conta do ChatGPT — rode `codex` no terminal uma vez para entrar |
+
+Para trocar: mude `"motor"` no `perfil.json` e reinicie com `Iniciar Aurora.bat`.
+Tudo continua igual — voz, personalidade, memória, brain-aurora, painéis, câmera.
+Diferenças com o Codex:
+
+- A resposta chega inteira de uma vez, então ela começa a falar um pouco depois.
+- As integrações extras dele vêm do `~/.codex/config.toml` (as do Claude, do `~/.claude.json`).
+- O contador de uso mostra tokens, não custo (o ChatGPT não informa valor por conversa).
+- Por segurança ele roda em modo somente leitura, a não ser que a Aurora seja iniciada com `--writes`.
 
 ## brain-aurora (Obsidian)
 

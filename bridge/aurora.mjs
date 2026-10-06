@@ -44,6 +44,8 @@ const DEFAULTS = {
   conversa: { retomarMinutos: 60 },
   permissoes: { permitir: [], bloquear: [] },
   brain: { ativo: true, pasta: '~/brain-aurora', escrita: 'inbox' },
+  motor: 'claude',
+  codex: { modelo: '', esforco: 'medium' },
 }
 
 function merge(base, over) {
@@ -447,21 +449,24 @@ export function personaPrompt(profile = loadProfile()) {
  * and a fresh conversation starts instead — yesterday's thread is what memory
  * is for.
  */
-export function sessionToResume(profile = loadProfile()) {
+export function sessionToResume(profile = loadProfile(), motor = 'claude') {
   const minutes = Number(profile.conversa?.retomarMinutos ?? 60)
   if (!(minutes > 0)) return null
   try {
-    const { id, at } = JSON.parse(readFileSync(SESSION_FILE, 'utf8'))
+    const saved = JSON.parse(readFileSync(SESSION_FILE, 'utf8'))
+    const { id, at } = saved
     if (typeof id !== 'string' || !id) return null
+    // A Claude session id means nothing to Codex and vice versa.
+    if ((saved.motor ?? 'claude') !== motor) return null
     return Date.now() - Number(at) < minutes * 60_000 ? id : null
   } catch {
     return null
   }
 }
 
-export function rememberSession(id) {
+export function rememberSession(id, motor = 'claude') {
   try {
-    if (id) writeFileSync(SESSION_FILE, JSON.stringify({ id, at: Date.now() }) + '\n', 'utf8')
+    if (id) writeFileSync(SESSION_FILE, JSON.stringify({ id, at: Date.now(), motor }) + '\n', 'utf8')
     else writeFileSync(SESSION_FILE, '{}\n', 'utf8')
   } catch {
     /* not being able to resume later is not worth failing a turn over */
@@ -501,4 +506,10 @@ export function permissionOverride(toolName, profile = loadProfile()) {
   if (matches(p.bloquear)) return false
   if (matches(p.permitir)) return true
   return null
+}
+
+/** Which engine runs her: "claude" (default) or "codex". AURORA_MOTOR overrides. */
+export function engineOf(profile = loadProfile()) {
+  const m = String(process.env.AURORA_MOTOR ?? profile.motor ?? 'claude').toLowerCase().trim()
+  return m === 'codex' || m === 'chatgpt' ? 'codex' : 'claude'
 }

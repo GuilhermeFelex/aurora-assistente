@@ -19,6 +19,9 @@
     "exigirSaudacao": false
   },
 
+  "motor": "claude",
+  "codex": { "modelo": "", "esforco": "medium" },
+
   "modelo": {
     "nome": "claude-sonnet-5",
     "esforco": "medium"
