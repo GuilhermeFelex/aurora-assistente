@@ -22,6 +22,8 @@ const MOVES: { gesture: string; hand: string; does: string }[] = [
   { gesture: 'mão aberta', hand: '🖐', does: 'solta' },
   { gesture: 'paz', hand: '✌', does: 'dois dedos para cima/baixo rolam' },
   { gesture: 'moldura', hand: '📐', does: 'dois cantos em L redimensionam' },
+  { gesture: 'mão aberta parada', hand: '✋', does: 'segure 1,5s: ela para de falar' },
+  { gesture: 'joinha', hand: '👍', does: 'segure: responde "sim"' },
 ]
 
 /** How long the legend stays after the first successful press. */

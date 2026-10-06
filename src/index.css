@@ -309,7 +309,7 @@ body::after {
 .error {
   position: absolute;
   left: 50%;
-  bottom: 52px;
+  bottom: 108px;
   transform: translateX(-50%);
   color: #ff6b6b;
   font-size: 10px;
@@ -317,6 +317,37 @@ body::after {
   letter-spacing: 0.04em;
   max-width: 70vw;
   text-align: center;
+}
+
+/* Aurora: the text box for typing instead of talking. */
+.typebox {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  width: min(560px, 80vw);
+  pointer-events: auto;
+  z-index: 5;
+}
+.typebox input {
+  width: 100%;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: #dff8ff;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+  outline: none;
+  opacity: 0.55;
+  transition: opacity 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.typebox input::placeholder { color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.typebox input:hover,
+.typebox input:focus {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .hud-bottom {
@@ -774,7 +805,7 @@ kbd {
 .suggest {
   position: absolute;
   left: 50%;
-  bottom: 96px;
+  bottom: 120px;
   transform: translateX(-50%);
   display: flex;
   align-items: baseline;

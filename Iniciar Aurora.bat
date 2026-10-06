@@ -14,15 +14,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules" (
-  echo   Primeira vez: instalando dependencias, pode levar alguns minutos...
-  call npm.cmd install
-  if errorlevel 1 (
-    echo   A instalacao falhou. Veja as mensagens acima.
-    pause
-    exit /b 1
-  )
-)
-
+rem As dependencias sao instaladas/atualizadas automaticamente pelo scripts\start.mjs.
 call npm.cmd run aurora
 pause

@@ -2,11 +2,8 @@ import {
   env,
   USE_ELEVENLABS,
   BACKEND,
-  TTS_ENGINE,
-  KOKORO_VOICE,
   BRIDGE_HTTP_URL,
 } from '../config'
-import * as kokoro from './kokoro'
 import { caps } from './capabilities'
 import { AURORA } from '../aurora'
 
@@ -63,7 +60,7 @@ const ECHO_TAIL_MS = 1800
  * indistinguishable. This tells them apart at a glance.
  */
 export const diag = {
-  engine: 'system' as 'system' | 'kokoro' | 'elevenlabs',
+  engine: 'system' as 'system' | 'elevenlabs',
   /** Utterances handed to an engine — the OS voice or an audio element. */
   spoken: 0,
   /**
@@ -258,9 +255,6 @@ function pickVoice(): SpeechSynthesisVoice | null {
  *  quietly replaced. */
 export function currentVoiceName(): string {
   if (USE_ELEVENLABS || caps().tts) return 'ElevenLabs'
-  if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
-    return KOKORO_VOICE.replace(/^bm_/, '')
-  }
   return pickVoice()?.name ?? 'default'
 }
 
@@ -399,10 +393,6 @@ export function createSpeaker(): Speaker {
       // exactly when you are trying to work out which engine is at fault.
       diag.engine = 'elevenlabs'
       return fetchCloudAudio(text).catch(() => null)
-    }
-    if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
-      diag.engine = 'kokoro'
-      return kokoro.speak(text).catch(() => null)
     }
     diag.engine = 'system'
     return null
@@ -604,7 +594,7 @@ export function createSpeaker(): Speaker {
       // see the onplaying handler below.
       diag.spoken++
       diag.lastText = text.slice(0, 60)
-      diag.voice = diag.engine === 'kokoro' ? KOKORO_VOICE : 'ElevenLabs'
+      diag.voice = 'ElevenLabs'
 
       let read: (() => number) | null = null
       const ctx = outputContext()

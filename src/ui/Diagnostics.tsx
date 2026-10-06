@@ -84,6 +84,17 @@ export function Diagnostics() {
   const w = window as unknown as Record<string, unknown>
   const v = (w.__voice ?? {}) as Partial<VoiceDiag>
   const t = (w.__tts ?? {}) as Partial<TtsDiag>
+  const u = (w.__usage ?? {}) as Partial<{
+    respostas: number
+    ferramentas: number
+    tokensEntrada: number
+    tokensSaida: number
+    tokensCache: number
+    custoUsd: number
+    modelo: string
+    retomada: boolean
+  }>
+  const n = (x?: number) => (x ?? 0).toLocaleString('pt-BR')
 
   // The two verdicts worth stating outright, rather than making you infer them
   // from the numbers underneath.
@@ -127,6 +138,18 @@ export function Diagnostics() {
       <Row k="falhas" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
       <Row k="resgates na nuvem" v={String(t.rescued ?? 0)} />
       <Row k="erro" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
+
+      <div className="diag-sec">USO NESTA CONVERSA</div>
+      <Row k="modelo" v={u.modelo ?? '—'} />
+      <Row k="conversa" v={u.retomada ? 'retomada' : 'nova'} />
+      <Row k="respostas" v={n(u.respostas)} />
+      <Row k="ferramentas usadas" v={n(u.ferramentas)} />
+      <Row k="tokens enviados" v={n((u.tokensEntrada ?? 0) + (u.tokensCache ?? 0))} />
+      <Row k="tokens gerados" v={n(u.tokensSaida)} />
+      <Row
+        k="equivalente na API"
+        v={u.custoUsd ? `US$ ${u.custoUsd.toFixed(3)}` : '—'}
+      />
     </div>
   )
 }

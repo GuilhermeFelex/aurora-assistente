@@ -10,9 +10,44 @@
  * browser, send things): `npm start -- --writes`.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import process from 'node:process'
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, statSync } from 'node:fs'
+
+/**
+ * Keep node_modules in step with package-lock.json.
+ *
+ * When an update to the project changes the lockfile (a removed dependency, a
+ * security fix), the installed packages are stale until someone remembers to
+ * run `npm install`. Checking here means every way of starting Aurora — the
+ * .bat, the hidden launcher, `npm start` — picks the change up on its own.
+ * npm writes node_modules/.package-lock.json after every install, so its mtime
+ * is a cheap "last installed" stamp.
+ */
+function ensureDependencies() {
+  const stamp = 'node_modules/.package-lock.json'
+  let stale = !existsSync(stamp)
+  if (!stale) {
+    try {
+      stale = statSync('package-lock.json').mtimeMs > statSync(stamp).mtimeMs + 1000
+    } catch {
+      stale = false
+    }
+  }
+  if (!stale) return
+  console.log('  atualizando as dependências (só acontece quando o projeto muda)...')
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const res = spawnSync(npm, ['install', '--no-audit', '--no-fund'], {
+    stdio: 'inherit',
+    // npm.cmd is a batch file; Windows only runs those through a shell.
+    shell: process.platform === 'win32',
+  })
+  if (res.status !== 0) {
+    console.warn('  a atualização das dependências falhou — seguindo com as que já estão instaladas.')
+  }
+}
+
+ensureDependencies()
 
 /**
  * Put MediaPipe's WebAssembly where the page can actually load it.

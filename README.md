@@ -24,6 +24,11 @@ recarregue a página.
 - Modelo mais rápido por padrão (Sonnet, esforço médio) — dá para trocar no `perfil.json`.
 - Memória de longo prazo e base de conhecimento editáveis.
 - Não acorda por engano com "aurora boreal" ou "a aurora".
+- Integração com o **brain-aurora** (cofre do Obsidian): busca, leitura e captura de notas na Inbox.
+- Caixa de texto para digitar, conversa retomada após recarregar, contador de uso no diagnóstico (D).
+- Permissões por ferramenta no `perfil.json`, modo sem janela e início com o Windows.
+- Gestos extras: mão aberta parada faz ela calar, joinha responde "sim".
+- Testes automáticos: `npm test`.
 
 ## Requisitos
 

@@ -35,6 +35,7 @@ type Frame = {
   seconds?: number
   when?: string
   servers?: Array<string | { name?: string }>
+  usage?: Record<string, unknown>
 }
 
 /** Every question gets an id so its answer can be told from anyone else's. */
@@ -203,6 +204,9 @@ function dispatch(ws: WebSocket) {
           .then(reply)
           .catch((err) => reply({ error: String(err?.message ?? err) }))
       }
+    } else if (msg.type === 'usage' && msg.usage) {
+      // Session totals for the diagnostics panel (D).
+      ;(window as unknown as Record<string, unknown>).__usage = msg.usage
     } else if (msg.type === 'ui' && msg.op) {
       // A `ui` frame with no args is normal — reset and clear take none — so an
       // absent args object is an empty one, not a reason to drop the command.

@@ -19,6 +19,64 @@ const statusText: Record<Phase, string> = {
   speaking: 'RESPONDENDO',
 }
 
+/**
+ * Typing instead of talking — for a noisy room, a failed microphone, or a link
+ * to paste. Enter sends it as if it had been said (no wake word needed); "/"
+ * anywhere on the page jumps here; Escape leaves the box.
+ */
+function TypeBox() {
+  const phase = useStore((s) => s.phase)
+  const [text, setText] = useState('')
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        ref.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  if (phase === 'offline' || phase === 'boot') return null
+
+  const send = () => {
+    const said = text.trim()
+    if (!said) return
+    window.dispatchEvent(new CustomEvent('aurora:texto', { detail: said }))
+    setText('')
+  }
+
+  return (
+    <form
+      className="typebox"
+      onSubmit={(e) => {
+        e.preventDefault()
+        send()
+      }}
+    >
+      <input
+        ref={ref}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation()
+            ref.current?.blur()
+          }
+        }}
+        placeholder={`Digite para a ${AURORA.nome}…  (Enter envia · / para focar)`}
+        aria-label={`Mensagem para a ${AURORA.nome}`}
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </form>
+  )
+}
+
 function Corner({ at }: { at: 'tl' | 'tr' | 'bl' | 'br' }) {
   return <div className={`corner corner-${at}`} />
 }
@@ -310,6 +368,8 @@ export function Hud() {
       {ui.chrome.suggestions && <Suggestions />}
 
       {error && <div className="error">{error}</div>}
+
+      <TypeBox />
 
       <footer className="hud-bottom">
         <span className="hint">

@@ -177,7 +177,7 @@ const AIM_LAG_MS = 190
 /** Nothing older than this is kept; two frames' worth of slack over the lag. */
 const TRAIL_MS = 500
 
-export type Gesture = 'point' | 'pinch' | 'frame' | 'open' | 'fist' | 'peace' | 'none'
+export type Gesture = 'point' | 'pinch' | 'frame' | 'open' | 'fist' | 'peace' | 'thumbsup' | 'none'
 export type Side = 'left' | 'right'
 
 /**
@@ -542,9 +542,19 @@ function stableGesture(id: number, raw: Gesture, now: number): Gesture {
 function classify(
   fingers: Hand['fingers'],
   pinched: boolean,
+  points?: { x: number; y: number }[],
+  span = 1,
 ): Gesture {
   if (pinched) return 'pinch'
   const { thumb, index, middle, ring, pinky } = fingers
+  // Aurora: thumbs-up — only the thumb out, and pointing up (its tip well
+  // above the wrist on screen), so a sideways thumb does not count.
+  if (
+    thumb && !index && !middle && !ring && !pinky &&
+    points && points[WRIST].y - points[THUMB_TIP].y > span * 0.6
+  ) {
+    return 'thumbsup'
+  }
   const up = [thumb, index, middle, ring, pinky].filter(Boolean).length
   if (index && middle && !ring && !pinky) return 'peace'
   /**
@@ -560,6 +570,35 @@ function classify(
   if (up >= 4) return 'open'
   if (up === 0) return 'fist'
   return 'none'
+}
+
+/**
+ * Aurora: gestures that do something by themselves, once held.
+ *
+ *   - open palm held 1.5s  → "aurora:calar": she stops talking
+ *   - thumbs-up held 0.8s  → "aurora:texto" with "sim": answers yes
+ *
+ * Each fires once per hold; the hand has to change pose before it can fire
+ * again. App.tsx listens for both events.
+ */
+const OPEN_HOLD_MS = 1500
+const THUMB_HOLD_MS = 800
+const holds = new Map<number, { g: Gesture; since: number; fired: boolean }>()
+
+function heldAction(id: number, g: Gesture, now: number) {
+  const h = holds.get(id)
+  if (!h || h.g !== g) {
+    holds.set(id, { g, since: now, fired: false })
+    return
+  }
+  if (h.fired) return
+  if (g === 'open' && now - h.since >= OPEN_HOLD_MS) {
+    h.fired = true
+    window.dispatchEvent(new CustomEvent('aurora:calar'))
+  } else if (g === 'thumbsup' && now - h.since >= THUMB_HOLD_MS) {
+    h.fired = true
+    window.dispatchEvent(new CustomEvent('aurora:texto', { detail: 'sim' }))
+  }
 }
 
 /* -------------------------------------------------------------------- camera */
@@ -597,6 +636,7 @@ async function ensureModel() {
 }
 
 function dropHand(i: number) {
+  holds.delete(i)
   const at = hands.findIndex((h) => h.id === i)
   if (at === -1) return
   releasePress(i, hands[at])
@@ -789,7 +829,8 @@ function loop(mine: number) {
       pinky: isExtended(points, PINKY_TIP, PINKY_PIP),
     }
     const wasGesture = hand.gesture
-    hand.gesture = stableGesture(i, classify(hand.fingers, pinched), now)
+    hand.gesture = stableGesture(i, classify(hand.fingers, pinched, points, span), now)
+    heldAction(i, hand.gesture, now)
     // A change of pose starts the settling window. Pinch is not counted: it is
     // the thing being protected, not a transition to recover from.
     if (hand.gesture !== wasGesture && hand.gesture !== 'pinch' && wasGesture !== 'pinch') {

@@ -12,8 +12,6 @@ import * as music from './lib/music'
 import * as hands from './lib/hands'
 import { listenForClap } from './lib/clap'
 import * as camera from './lib/camera'
-import * as kokoro from './lib/kokoro'
-import { TTS_ENGINE } from './config'
 import { forTool, attention } from './lib/fillers'
 import {
   ask,
@@ -85,7 +83,6 @@ export default function App() {
   const turn = useRef(0)
   const booting = useRef(false)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // -- helpers --------------------------------------------------------------
 
@@ -459,7 +456,7 @@ export default function App() {
       } else if (state === 'reconnected') {
         store
           .getState()
-          .setError('Cérebro reconectado. A conversa anterior não foi mantida.')
+          .setError('Cérebro reconectado.')
       }
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
@@ -468,24 +465,6 @@ export default function App() {
       s.setError(
         'No Anthropic API key — copy .env.example to .env.local and set VITE_ANTHROPIC_API_KEY.',
       )
-    }
-
-    // Pull the neural voice down during the boot sequence so the first
-    // "Hey Jarvis" isn't waiting on an 86MB download. Deliberately not awaited
-    // — if it's slow, JARVIS comes up on the system voice and swaps over the
-    // moment the model is ready.
-    if (TTS_ENGINE === 'kokoro') {
-      void kokoro.load()
-      voicePoll.current = setInterval(() => {
-        const p = kokoro.loadProgress()
-        if (kokoro.isReady() || kokoro.isUnavailable()) {
-          store.getState().setBootNote('')
-          if (voicePoll.current) clearInterval(voicePoll.current)
-          voicePoll.current = null
-        } else if (p > 0 && p < 1) {
-          store.getState().setBootNote(`voice ${Math.round(p * 100)}%`)
-        }
-      }, 200)
     }
 
     // Long enough for the four-beat start-up sequence in Boot.tsx to play —
@@ -622,8 +601,8 @@ export default function App() {
                 .getState()
                 .setError(
                   err?.name === 'NotAllowedError'
-                    ? 'Camera access denied — gesture control is unavailable.'
-                    : `Gesture control failed to start: ${err?.message ?? err}`,
+                    ? 'Acesso à câmera negado — o controle por gestos está indisponível.'
+                    : `O controle por gestos não conseguiu iniciar: ${err?.message ?? err}`,
                 )
             })
         }
@@ -645,7 +624,7 @@ export default function App() {
           console.info('[jarvis] audio test →', d)
           if (d && d.started === 0 && d.rescued === 0) {
             store.getState().setError(
-              `No sound produced. engine=${d.engine} voice=${d.voice} error=${d.lastError || 'none'}`,
+              `Nenhum som foi produzido. motor=${d.engine} voz=${d.voice} erro=${d.lastError || 'nenhum'}`,
             )
           }
         })
@@ -683,11 +662,35 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
 
+    // Typed input from the text box in the HUD, and the "yes" gesture: both
+    // arrive as a ready-made utterance, so they skip the wake word entirely.
+    const onTyped = (e: Event) => {
+      const text = String((e as CustomEvent<string>).detail ?? '').trim()
+      if (!text) return
+      const phase = store.getState().phase
+      if (phase === 'offline' || phase === 'boot') return
+      store.getState().setError(null)
+      if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') onSpeechStart()
+      void respond(text)
+    }
+    // The "stop" gesture: cut her off and stand down, like Escape.
+    // Only acts while she is busy: an open hand resting in view must not end
+    // a conversation that is merely waiting for the next sentence.
+    const onHush = () => {
+      const phase = store.getState().phase
+      if (phase !== 'thinking' && phase !== 'tooling' && phase !== 'speaking') return
+      onSpeechStart()
+      goDormant()
+    }
+    window.addEventListener('aurora:texto', onTyped)
+    window.addEventListener('aurora:calar', onHush)
+
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('aurora:texto', onTyped)
+      window.removeEventListener('aurora:calar', onHush)
       clearIdle()
-      if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()
       speaker.current?.cancel()
       // The camera must not outlive the page that turned it on.

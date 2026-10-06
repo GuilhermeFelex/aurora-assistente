@@ -45,12 +45,57 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
     "elevenlabsVoiceId": "EXAVITQu4vr4xnSDxMaL" // voz usada se você tiver chave da ElevenLabs
   },
 
-  "memoria": { "ativa": true, "limite": 200 }  // liga/desliga a memória e quantos itens guardar
+  "memoria": { "ativa": true, "limite": 200 }, // liga/desliga a memória e quantos itens guardar
+
+  "conversa": { "retomarMinutos": 60 },       // retoma a conversa após recarregar/reiniciar, se for desse tempo; 0 = nunca
+
+  "brain": {
+    "ativo": true,                             // integração com o seu cofre do Obsidian
+    "pasta": "~/brain-aurora",                 // ~ = sua pasta de usuário (assim o nome de usuário não vai para o GitHub)
+    "escrita": "inbox"                         // "inbox" = pode criar notas novas na 90_INBOX; "nao" = só leitura
+  },
+
+  "permissoes": {
+    "permitir": [],                            // ferramentas liberadas mesmo no modo somente leitura
+    "bloquear": []                             // ferramentas sempre proibidas (vence o "permitir")
+  }
 }
 ```
 
 Ela nunca acorda com "a aurora", "da aurora" ou "aurora boreal", para não ser
 ativada por engano numa conversa normal.
+
+### Permissões
+
+Cada regra é o nome de uma integração ou um padrão com `*`:
+
+- `"spotify"` — todas as ferramentas da integração spotify
+- `"mcp__agenda__criar*"` — só as ferramentas que começam com "criar"
+- `"Bash"` — uma ferramenta interna pelo nome
+
+Exemplo: `"permitir": ["spotify"], "bloquear": ["mcp__spotify__apagar*"]` deixa ela
+tocar música mesmo no modo somente leitura, mas nunca apagar playlists.
+
+## brain-aurora (Obsidian)
+
+Com o cofre encontrado, ela ganha quatro ferramentas:
+
+- **buscar** — procura nas notas (sem ligar para acentos), ignorando templates e arquivo morto
+- **ler** — lê uma nota inteira ou só uma seção
+- **listar** — mostra as notas de uma área
+- **capturar** — cria uma nota nova na `90_INBOX`, no modelo do cofre, marcada como
+  `precisa-validacao`. Nunca edita nem apaga notas existentes, e recusa conteúdo que
+  pareça senha, token ou chave.
+
+Ela também não faz commit no repositório do cofre: as notas novas ficam para você revisar.
+
+## Iniciar sem janela e com o Windows
+
+- `Iniciar Aurora (sem janela).bat` — liga em segundo plano e abre o Chrome quando estiver pronta.
+- `Parar Aurora.bat` — desliga.
+- `Ativar inicio com o Windows.bat` / `Desativar inicio com o Windows.bat` — liga ou desliga
+  a Aurora automaticamente quando você entra no Windows (sem janela).
+- O que ela imprimiria na tela fica em `aurora/aurora.log`.
 
 ## personalidade.md e regras.md
 

@@ -27,7 +27,16 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
-import { AURORA_DIR, loadProfile, memoryServer, personaPrompt } from './aurora.mjs'
+import {
+  AURORA_DIR,
+  loadProfile,
+  memoryServer,
+  permissionOverride,
+  personaPrompt,
+  rememberSession,
+  sessionToResume,
+} from './aurora.mjs'
+import { brainEnabled, brainPrompt, brainServer } from './brain.mjs'
 
 // Secrets such as ELEVENLABS_API_KEY can live in a .env file at the project
 // root (never committed — see .gitignore). Variables already set in the shell
@@ -265,7 +274,14 @@ const VETO_EXEMPT = new Set([
   'openrouter__send-feedback',
 ])
 
+/** The profile whose permissoes rules apply; refreshed on every connection. */
+let PERMS_PROFILE = PROFILE
+
 function decideTool(name) {
+  // The user's own allow/deny lists in aurora/perfil.json come first.
+  const override = permissionOverride(name, PERMS_PROFILE)
+  if (override !== null) return override
+
   if (READ_ONLY_BUILTINS.has(name)) return true
   if (WRITE_BUILTINS.has(name)) return ALLOW_WRITES
 
@@ -280,6 +296,10 @@ function decideTool(name) {
 
     // Her memory. It only ever writes aurora/memoria.json.
     if (server === 'aurora_memoria') return true
+
+    // The brain-aurora vault: reads anywhere in it; the one write tool only
+    // ever creates new notes in 90_INBOX, and exists only if perfil allows it.
+    if (server === 'aurora_brain') return true
 
     // The browser server gates itself, at construction: chromeServer() only
     // builds the acting tools — click, type, form input, close tab — when
@@ -998,6 +1018,11 @@ console.log(
 )
 console.log(`[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · modelo ${MODEL} · esforço ${EFFORT}`)
 console.log(
+  brainEnabled(PROFILE)
+    ? '[aurora] brain-aurora conectado'
+    : '[aurora] brain-aurora não encontrado (perfil.json → brain.pasta)',
+)
+console.log(
   `[jarvis] writes ${ALLOW_WRITES ? 'ENABLED' : 'disabled'}` +
     (ALLOW_WRITES ? '' : ' — set JARVIS_ALLOW_WRITES=1 to permit shell/file/device actions'),
 )
@@ -1200,6 +1225,23 @@ wss.on('connection', (socket) => {
 
   // Re-read aurora/ for every connection, so edits apply on a page reload.
   const profile = loadProfile()
+  PERMS_PROFILE = profile
+  const withBrain = brainEnabled(profile)
+  // Pick the last conversation back up if it is recent (aurora/sessao.json).
+  const resumeId = sessionToResume(profile)
+  let sessionStarted = false
+  // Running totals for this conversation, shown in the diagnostics panel (D).
+  const usage = {
+    respostas: 0,
+    ferramentas: 0,
+    tokensEntrada: 0,
+    tokensSaida: 0,
+    tokensCache: 0,
+    custoUsd: 0,
+    modelo: process.env.JARVIS_MODEL ?? profile.modelo?.nome ?? MODEL,
+    retomada: Boolean(resumeId),
+  }
+  if (resumeId) console.log(`[aurora] retomando a conversa ${resumeId.slice(0, 8)}…`)
 
   const session = query({
     prompt: userMessages(),
@@ -1227,12 +1269,17 @@ wss.on('connection', (socket) => {
         jarvis_eyes: visionServer(ask),
         // Long-term memory, kept in aurora/memoria.json.
         ...(profile.memoria?.ativa === false ? {} : { aurora_memoria: memoryServer() }),
+        // The user's Obsidian vault (perfil.json → brain).
+        ...(withBrain ? { aurora_brain: brainServer(profile) } : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: `${personaPrompt(profile)}\n\n${operationalPrompt(CHROME_OK)}`,
+      systemPrompt:
+        `${personaPrompt(profile)}\n\n` +
+        (withBrain ? `${brainPrompt(profile)}\n\n` : '') +
+        operationalPrompt(CHROME_OK),
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
@@ -1257,6 +1304,7 @@ wss.on('connection', (socket) => {
       // Normally your own `/model` preference would decide, but that lives in
       // the settings files `settingSources: []` deliberately stops loading, so
       // without this line nothing in the project has a say at all.
+      ...(resumeId ? { resume: resumeId } : {}),
       model: process.env.JARVIS_MODEL ?? profile.modelo?.nome ?? MODEL,
       effort: process.env.JARVIS_EFFORT ?? profile.modelo?.esforco ?? EFFORT,
       maxTurns: 24,
@@ -1355,6 +1403,15 @@ wss.on('connection', (socket) => {
             // empty text is indistinguishable from a turn that simply had
             // nothing to say — the HUD stops spinning and JARVIS stands there
             // silent. Say what happened instead.
+            if (msg.session_id) rememberSession(msg.session_id)
+            usage.respostas++
+            usage.ferramentas += seenTools.size
+            usage.tokensEntrada += msg.usage?.input_tokens ?? 0
+            usage.tokensSaida += msg.usage?.output_tokens ?? 0
+            usage.tokensCache +=
+              (msg.usage?.cache_read_input_tokens ?? 0) + (msg.usage?.cache_creation_input_tokens ?? 0)
+            usage.custoUsd += msg.total_cost_usd ?? 0
+            send({ type: 'usage', usage })
             if (msg.subtype === 'success') {
               sendTurn({
                 type: 'done',
@@ -1383,6 +1440,8 @@ wss.on('connection', (socket) => {
 
           case 'system':
             if (msg.subtype === 'init') {
+              sessionStarted = true
+              if (msg.session_id) rememberSession(msg.session_id)
               // Servers report 'pending' until first use — they connect
               // lazily — so only drop the ones that are actually unusable.
               const usable = (msg.mcp_servers ?? [])
@@ -1396,6 +1455,9 @@ wss.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('[jarvis] session error:', err)
+      // A resume that never got going (the saved session is gone or broken)
+      // would otherwise fail the same way on every reconnect. Forget it.
+      if (resumeId && !sessionStarted) rememberSession(null)
       send({ type: 'error', message: String(err?.message ?? err) })
       // The stream is finished either way — nothing will ever be read from it
       // again. Leaving the socket open would leave the client believing it has

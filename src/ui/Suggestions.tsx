@@ -41,7 +41,7 @@ export function Suggestions() {
 
   return (
     <div className="suggest">
-      <span className="suggest-lead">try</span>
+      <span className="suggest-lead">experimente</span>
       <AnimatePresence mode="wait">
         <motion.span
           key={i}

@@ -21,8 +21,11 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, renameSync } from
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const AURORA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'aurora')
+// AURORA_DIR can be pointed elsewhere (the tests use a scratch copy).
+export const AURORA_DIR =
+  process.env.AURORA_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'aurora')
 const MEMORY_FILE = join(AURORA_DIR, 'memoria.json')
+const SESSION_FILE = join(AURORA_DIR, 'sessao.json')
 
 const DEFAULTS = {
   assistente: { nome: 'Aurora' },
@@ -36,6 +39,9 @@ const DEFAULTS = {
   modelo: { nome: 'claude-sonnet-5', esforco: 'medium' },
   voz: { elevenlabsVoiceId: 'EXAVITQu4vr4xnSDxMaL' },
   memoria: { ativa: true, limite: 200 },
+  conversa: { retomarMinutos: 60 },
+  permissoes: { permitir: [], bloquear: [] },
+  brain: { ativo: true, pasta: '~/brain-aurora', escrita: 'inbox' },
 }
 
 function merge(base, over) {
@@ -229,4 +235,68 @@ export function personaPrompt(profile = loadProfile()) {
   }
 
   return sections.join('\n\n')
+}
+
+/* ----------------------------------------------------------------- session */
+
+/**
+ * The conversation to pick up again after a reload or a restart: the SDK's
+ * session id, and when it was last used. Older than `conversa.retomarMinutos`
+ * and a fresh conversation starts instead — yesterday's thread is what memory
+ * is for.
+ */
+export function sessionToResume(profile = loadProfile()) {
+  const minutes = Number(profile.conversa?.retomarMinutos ?? 60)
+  if (!(minutes > 0)) return null
+  try {
+    const { id, at } = JSON.parse(readFileSync(SESSION_FILE, 'utf8'))
+    if (typeof id !== 'string' || !id) return null
+    return Date.now() - Number(at) < minutes * 60_000 ? id : null
+  } catch {
+    return null
+  }
+}
+
+export function rememberSession(id) {
+  try {
+    if (id) writeFileSync(SESSION_FILE, JSON.stringify({ id, at: Date.now() }) + '\n', 'utf8')
+    else writeFileSync(SESSION_FILE, '{}\n', 'utf8')
+  } catch {
+    /* not being able to resume later is not worth failing a turn over */
+  }
+}
+
+/* ------------------------------------------------------------- permissions */
+
+/**
+ * One rule from perfil.json → permissoes.permitir / permissoes.bloquear, as a
+ * matcher on the full tool name the SDK reports:
+ *
+ *   "spotify"              → every tool of the MCP server "spotify"
+ *   "mcp__spotify__play*"  → a glob on the full name
+ *   "WebFetch"             → a built-in tool by name
+ */
+function ruleToRegExp(rule) {
+  const r = String(rule ?? '').trim()
+  if (!r) return null
+  const glob = /^[a-z0-9_-]+$/i.test(r) && !/^[A-Z]/.test(r) ? `mcp__${r}__*` : r
+  const src = glob
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+  return new RegExp(`^${src}$`, 'i')
+}
+
+/**
+ * The user's own word on a tool, ahead of the built-in read-only gate:
+ * `false` when a "bloquear" rule matches (blocking always wins), `true` when a
+ * "permitir" rule matches, `null` when neither says anything.
+ */
+export function permissionOverride(toolName, profile = loadProfile()) {
+  const p = profile.permissoes ?? {}
+  const matches = (list) =>
+    (Array.isArray(list) ? list : []).some((rule) => ruleToRegExp(rule)?.test(toolName))
+  if (matches(p.bloquear)) return false
+  if (matches(p.permitir)) return true
+  return null
 }
