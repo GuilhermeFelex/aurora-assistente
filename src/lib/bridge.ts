@@ -20,6 +20,10 @@ import { BRIDGE_WS_URL } from '../config'
  *  bridge build should be ignored, not crash the turn. */
 type Frame = {
   type?: string
+  motor?: string
+  label?: string
+  tipo?: string
+  reserva?: boolean
   delta?: string
   name?: string
   text?: string
@@ -442,6 +446,10 @@ export async function ask(
             if (!msg.name) break
             tools.push(msg.name)
             handlers.onTool(prettyToolName(msg.name))
+            break
+
+          case 'engine':
+            handlers.onEngine?.(msg.label ?? msg.motor ?? '', msg.tipo ?? '', msg.reserva === true)
             break
 
           case 'done':

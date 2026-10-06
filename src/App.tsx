@@ -143,6 +143,7 @@ export default function App() {
     const turnId = newId()
     let started = false
     let filled = false
+    let motor: string | undefined
 
     try {
       const { text } = await ask(said, history.current, {
@@ -155,10 +156,15 @@ export default function App() {
             // clear the readout while a slow tool was still running.
             store.getState().setActiveTool(null)
             music.working(false)
-            store.getState().pushTurn({ id: turnId, role: 'jarvis', text: '' })
+            store.getState().pushTurn({ id: turnId, role: 'jarvis', text: '', motor })
           }
           store.getState().appendToLastTurn(delta)
           spk.push(delta)
+        },
+        onEngine: (label, tipo, reserva) => {
+          if (stale() || !label) return
+          motor = [label, tipo, reserva ? 'reserva' : ''].filter(Boolean).join(' · ')
+          if (started) store.getState().setTurnMotor(turnId, motor)
         },
         onTool: (name) => {
           if (stale()) return

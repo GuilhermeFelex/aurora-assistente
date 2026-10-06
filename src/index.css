@@ -275,6 +275,15 @@ body::after {
   line-height: 1.55;
 }
 
+.log-motor {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
 .log-who {
   flex: 0 0 54px;
   font-size: 8px;

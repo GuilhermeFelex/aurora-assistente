@@ -35,6 +35,23 @@ export const ENGINE_LABEL = {
   llama: 'Llama (local)',
 }
 
+/** "Llama · llama3.1:8b", "Claude · haiku" — what the page shows under an answer. */
+export function engineLabel(engine, profile = {}, modelo = null) {
+  const model =
+    modelo ||
+    (engine === 'claude'
+      ? process.env.JARVIS_MODEL || profile.modelo?.nome
+      : engine === 'codex'
+        ? profile.codex?.modelo
+        : engine === 'gemini'
+          ? profile.gemini?.modelo
+          : engine === 'llama'
+            ? profile.llama?.modelo || 'llama3.1:8b'
+            : null)
+  const name = { claude: 'Claude', codex: 'ChatGPT', gemini: 'Gemini', llama: 'Llama' }[engine] ?? engine
+  return model ? `${name} · ${model}` : name
+}
+
 /** Lowercase, no accents, single spaces — what keywords are compared against. */
 export function fold(text) {
   return String(text ?? '')

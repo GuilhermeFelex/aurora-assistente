@@ -30,6 +30,7 @@ import {
   classifierPrompt,
   classify,
   defaultRoute,
+  engineLabel,
   handoffContext,
   routeForType,
   routingOf,
@@ -208,6 +209,15 @@ export function runConnection(socket, deps) {
         continue
       }
       current = eng
+      // Which engine is answering, for the line under the answer on screen.
+      send({
+        type: 'engine',
+        motor: name,
+        label: engineLabel(name, profile, own ? route.modelo : null),
+        tipo: route.tipo,
+        reserva: !own,
+        ask: id,
+      })
       let out
       try {
         out = await eng.run(handoffContext(transcript, name) + route.texto, {
@@ -234,7 +244,7 @@ export function runConnection(socket, deps) {
       const answer = out?.text || partial
       transcript.push({ pergunta: route.texto, resposta: answer, motor: name })
       if (transcript.length > TRANSCRIPT_KEEP) transcript.shift()
-      send({ type: 'done', text: answer, costUsd: null, ask: id })
+      send({ type: 'done', text: answer, costUsd: null, motor: name, ask: id })
       return
     }
     send({

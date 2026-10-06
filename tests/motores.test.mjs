@@ -199,8 +199,13 @@ test('cada pedido vai para o motor do seu tipo, com o contexto do que ele não v
   assert.match(log[1].text, /resposta do gemini[\s\S]*\[Pedido atual\]\npesquisa a cotação do euro$/)
   assert.deepEqual(
     socket.frames('a2').map((f) => f.type),
-    ['text', 'tool', 'done'],
+    ['engine', 'text', 'tool', 'done'],
   )
+  const eng = socket.frames('a2')[0]
+  assert.equal(eng.motor, 'codex')
+  assert.equal(eng.tipo, 'web')
+  assert.equal(eng.label, 'ChatGPT')
+  assert.equal(socket.frames('a3')[0].label, 'Claude · claude-opus-5')
   assert.equal(socket.frames('a2').at(-1).text, 'resposta do codex')
   socket.emit('close')
 })
@@ -228,6 +233,9 @@ test('motor indisponível → a reserva responde e ele fica de fora por um tempo
   )
   assert.equal(socket.frames('b1').at(-1).type, 'done')
   assert.equal(socket.frames('b1').at(-1).text, 'resposta do claude')
+  // A página vê as duas tentativas; a última é a que respondeu, marcada como reserva.
+  const b1 = socket.frames('b1').filter((f) => f.type === 'engine')
+  assert.deepEqual(b1.map((f) => [f.motor, f.reserva]), [['gemini', false], ['claude', true]])
   socket.emit('close')
 })
 
@@ -274,7 +282,7 @@ test('interromper encerra o turno com o que já foi dito e libera o próximo', a
   await settle()
   assert.deepEqual(
     socket.frames('d1').map((f) => f.type),
-    ['text', 'done'],
+    ['engine', 'text', 'done'],
   )
   assert.equal(socket.frames('d2').at(-1).text, 'resposta do codex')
   socket.emit('close')

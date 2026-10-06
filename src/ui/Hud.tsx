@@ -338,6 +338,7 @@ export function Hud() {
                     output would be a lie about where the words came from. */}
                 <span className="log-text">
                   {t.role === 'jarvis' ? <DecodeText text={t.text} /> : t.text}
+                  {t.role === 'jarvis' && t.motor && <span className="log-motor">via {t.motor}</span>}
                 </span>
               </motion.div>
             ))}

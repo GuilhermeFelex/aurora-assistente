@@ -58,6 +58,8 @@ export type Turn = {
   text: string
   /** Tool names invoked while producing this turn, for the HUD readout. */
   tools?: string[]
+  /** Which engine answered (e.g. "Llama · llama3.1:8b · conversa"). */
+  motor?: string
 }
 
 /**
@@ -260,6 +262,7 @@ type State = {
   setConnected: (c: string[]) => void
   pushTurn: (t: Turn) => void
   appendToLastTurn: (text: string) => void
+  setTurnMotor: (id: string, motor: string) => void
 
   applyUi: (patch: UiPatch) => void
   addOrbit: (o: OrbitObject) => void
@@ -353,6 +356,8 @@ export const useStore = create<State>((set) => ({
   setError: (error) => set({ error }),
   setConnected: (connected) => set({ connected }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),
+  setTurnMotor: (id, motor) =>
+    set((s) => ({ turns: s.turns.map((t) => (t.id === id ? { ...t, motor } : t)) })),
   appendToLastTurn: (text) =>
     set((s) => {
       const turns = [...s.turns]
