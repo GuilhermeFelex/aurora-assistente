@@ -14,7 +14,7 @@ import { AURORA } from '../aurora'
  */
 const EXAMPLES = [
   'o que aconteceu com IA esta semana',
-  'gera uma imagem de uma cidade futurista à noite',
+  'me mostra fotos da aurora boreal na Noruega',
   'qual a previsão do tempo para amanhã',
   'procura a melhor cafeteria perto de mim',
   'lê a principal notícia do dia',

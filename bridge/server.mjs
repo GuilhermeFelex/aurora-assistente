@@ -306,12 +306,51 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
+const BROWSER_WITH_CHROME = `Their browser — ALWAYS the \`chrome_*\` tools, first, for anything to do with a
+browser or a web page:
+- The \`chrome_*\` tools drive the user's own Chrome. It is already signed in to
+  everything they use, it carries their real cookies, and it does not read as
+  automation to the sites it visits.
+- This is the FIRST thing you reach for on any browsing task: opening a page,
+  reading one, searching a site, checking mail, a dashboard, a profile, an
+  account, anything behind a login. Do not weigh it up against the
+  alternatives — start here.
+- But Chrome is your HANDS, not your display. Use it to reach and read things;
+  then show what you found on a blade. Leaving the answer in a browser tab is
+  not showing it — they are looking at this interface.
+- NEVER use playwright, puppeteer, or any other browser automation server for
+  this. They start from an empty profile with no session and a fingerprint that
+  the sites worth visiting refuse on sight, so they land on a login wall or a
+  bot check and waste the turn. Only consider one if \`chrome_status\` reports the
+  browser is genuinely unreachable and the task cannot be done any other way.
+- A plain search engine query is still fine for a fact you only need to know —
+  what you must not do is drive some other browser.
+- Read the page before acting on it, and take element references from that read
+  rather than guessing where something is.
+- Before anything that sends, buys, deletes or posts, say in one sentence what
+  you are about to do. After it, say what happened.
+- If the browser is unreachable, say so once and carry on without it.
+
+`
+
+const BROWSER_WITHOUT_CHROME = `The user's browser:
+- You cannot drive the user's own Chrome on this machine; there is no browser
+  extension connection and none is needed. Do not mention extensions, plugins
+  or browser control unless the user asks about it directly.
+- For anything on the web, search and fetch it yourself, then show it on a
+  blade: an article opens in reading mode, a video or map as its own blade.
+- Never use playwright, puppeteer or any other browser automation server.
+- If something truly requires being logged in to the user's account, say once,
+  in one sentence, that you cannot reach his logged-in accounts from here.
+
+`
+
 /**
  * The operational half of the system prompt: how this program works. Her
  * character, the user's profile, knowledge and memory come from the files in
  * aurora/ (see bridge/aurora.mjs) and are placed before this, per connection.
  */
-const OPERATIONAL_PROMPT = `# How this interface works
+const operationalPrompt = (chromeOk) => `# How this interface works
 
 Everything below describes the program you live in. Follow it, but always speak
 Brazilian Portuguese with the personality described above.
@@ -358,32 +397,7 @@ The interface itself:
 - Put it back. A colour that outlives the moment that earned it is a fault.
 - Never mention that you have done any of it. They are looking at the screen.
 
-Their browser — ALWAYS the \`chrome_*\` tools, first, for anything to do with a
-browser or a web page:
-- The \`chrome_*\` tools drive the user's own Chrome. It is already signed in to
-  everything they use, it carries their real cookies, and it does not read as
-  automation to the sites it visits.
-- This is the FIRST thing you reach for on any browsing task: opening a page,
-  reading one, searching a site, checking mail, a dashboard, a profile, an
-  account, anything behind a login. Do not weigh it up against the
-  alternatives — start here.
-- But Chrome is your HANDS, not your display. Use it to reach and read things;
-  then show what you found on a blade. Leaving the answer in a browser tab is
-  not showing it — they are looking at this interface.
-- NEVER use playwright, puppeteer, or any other browser automation server for
-  this. They start from an empty profile with no session and a fingerprint that
-  the sites worth visiting refuse on sight, so they land on a login wall or a
-  bot check and waste the turn. Only consider one if \`chrome_status\` reports the
-  browser is genuinely unreachable and the task cannot be done any other way.
-- A plain search engine query is still fine for a fact you only need to know —
-  what you must not do is drive some other browser.
-- Read the page before acting on it, and take element references from that read
-  rather than guessing where something is.
-- Before anything that sends, buys, deletes or posts, say in one sentence what
-  you are about to do. After it, say what happened.
-- If the browser is unreachable, say so once and carry on without it.
-
-Your eyes:
+${chromeOk ? BROWSER_WITH_CHROME : BROWSER_WITHOUT_CHROME}Your eyes:
 - \`look\` takes one frame and lets you see it. \`watch\` takes several seconds and
   returns them as a grid of stamped frames, so you can read movement rather than
   a moment.
@@ -991,11 +1005,27 @@ console.log(
 // at all because an extension that is simply not running is indistinguishable
 // at the tool boundary from one that is broken, and this is the one place the
 // difference can be stated before anybody asks a question that depends on it.
+/**
+ * Whether the Claude extension's native host is reachable. Checked now and
+ * every 20s; read synchronously when a connection opens. Without it the
+ * browser tools are left out entirely and the prompt says so, so she stops
+ * blaming a missing extension for ordinary web requests. (On Windows the
+ * native host speaks a named pipe rather than the Unix socket this bridge
+ * knows, so it is always off there.)
+ */
+let CHROME_OK = false
+const refreshChrome = () =>
+  chromeAvailable()
+    .then((ok) => (CHROME_OK = ok))
+    .catch(() => (CHROME_OK = false))
+setInterval(refreshChrome, 20_000).unref()
+
 void chromeAvailable().then((ok) => {
+  CHROME_OK = ok
   console.log(
     ok
       ? `[jarvis] browser control ready${ALLOW_WRITES ? '' : ' (reading only — clicking and typing need JARVIS_ALLOW_WRITES=1)'}`
-      : '[jarvis] browser control unavailable — open Chrome with the Claude extension enabled',
+      : '[aurora] controle do Chrome indisponível (normal no Windows) — ela usa pesquisa na web no lugar',
   )
 })
 
@@ -1192,7 +1222,7 @@ wss.on('connection', (socket) => {
         // The user's own Chrome, over the extension's native-host socket. It
         // holds no per-connection state, but it is built here with the rest so
         // the write gate is read once, at the same point as everything else.
-        jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
+        ...(CHROME_OK ? { jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }) } : {}),
         // The camera, which unlike everything else here has to ask and wait.
         jarvis_eyes: visionServer(ask),
         // Long-term memory, kept in aurora/memoria.json.
@@ -1202,7 +1232,7 @@ wss.on('connection', (socket) => {
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: `${personaPrompt(profile)}\n\n${OPERATIONAL_PROMPT}`,
+      systemPrompt: `${personaPrompt(profile)}\n\n${operationalPrompt(CHROME_OK)}`,
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
