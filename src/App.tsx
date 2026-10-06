@@ -32,6 +32,7 @@ import {
 import { startAnalyser, micLevel } from './lib/audio'
 import { probeCapabilities } from './lib/capabilities'
 import { env } from './config'
+import { AURORA, GREETING_SRC, NAME_SRC } from './aurora'
 
 /**
  * The conversation.
@@ -63,11 +64,11 @@ const newId = () =>
 
 /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
  *  that woke him as "travis" gets that word sent on to the model as a question. */
-const NAME = '(?:aurora|aurorah|aurore|arora|aurura|alrora|a urora)'
+const NAME = NAME_SRC
 /** A bare vocative — "Jarvis", "hey jarvis" — with nothing asked. */
-const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo|ei|oi|ol[aá]|e a[ií]|fala)?\\s*${NAME}[\\s,.!?]*$`, 'i')
+const BARE_NAME = new RegExp(`^(?:${GREETING_SRC}[\\s,]*)?${NAME}[\\s,.!?]*$`, 'i')
 /** A leading vocative on a real command: "Jarvis, what's the weather". */
-const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo|ei|oi|ol[aá]|e a[ií]|fala)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
+const LEADING_NAME = new RegExp(`^(?:${GREETING_SRC}[\\s,]*)?${NAME}\\b[\\s,.:!?-]*`, 'i')
 
 export default function App() {
   const store = useStore
@@ -203,7 +204,7 @@ export default function App() {
       sfx.play('error')
       store
         .getState()
-        .setError(err instanceof Error ? err.message : 'Something went wrong.')
+        .setError(err instanceof Error ? err.message : 'Algo deu errado.')
     } finally {
       if (!stale()) {
         speaker.current = null
@@ -405,7 +406,7 @@ export default function App() {
         if (req.mode === 'look') return camera.grabFrame()
         if (req.when === 'past') {
           const grid = camera.recentGrid(req.seconds, 9)
-          return grid ?? { error: 'There is not enough recent footage to review.' }
+          return grid ?? { error: 'Não há imagens recentes suficientes para revisar.' }
         }
         return await camera.watchAhead(req.seconds, 9)
       } catch (err) {
@@ -454,11 +455,11 @@ export default function App() {
     // on screen still shows it. Better to say so than to let him quietly forget.
     watchConnection((state) => {
       if (state === 'lost') {
-        store.getState().setError('Bridge connection lost — reconnecting.')
+        store.getState().setError('Conexão com o cérebro perdida — reconectando.')
       } else if (state === 'reconnected') {
         store
           .getState()
-          .setError('Bridge reconnected. The previous conversation was not kept.')
+          .setError('Cérebro reconectado. A conversa anterior não foi mantida.')
       }
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
@@ -596,7 +597,7 @@ export default function App() {
         silence()
         const demo = createSpeaker()
         speaker.current = demo
-        demo.say(`Voz alterada para ${name.replace(/\(.*?\)/g, '').trim()}. Às suas ordens, senhor.`)
+        demo.say(`Voz alterada para ${name.replace(/\(.*?\)/g, '').trim()}. Às suas ordens, ${AURORA.tratamentoCurto}.`)
         void demo.end()
         return
       }
@@ -638,7 +639,7 @@ export default function App() {
         silence()
         const t = createSpeaker()
         speaker.current = t
-        t.say('Teste de áudio. Se está ouvindo isto, a fala está funcionando, senhor.')
+        t.say(`Teste de áudio. Se está ouvindo isto, a fala está funcionando, ${AURORA.tratamentoCurto}.`)
         void t.end().then(() => {
           const d = (window as unknown as Record<string, Record<string, unknown>>).__tts
           console.info('[jarvis] audio test →', d)

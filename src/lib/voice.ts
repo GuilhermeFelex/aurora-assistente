@@ -3,6 +3,7 @@ import { getMic } from './audio'
 import { speakingNow, speakingSince } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
+import { WAKE } from '../aurora'
 
 /**
  * The voice loop.
@@ -65,21 +66,10 @@ export type Voice = {
 const WAKE_DEBOUNCE = 1500
 
 /**
- * His name, and the only wake phrase.
- *
- * The optional prefix is genuinely optional: addressing him by name alone is
- * correct, and during an answer "Jarvis" on its own is the natural way to cut
- * in. The negative lookahead keeps possessives ("Jarvis's job") from waking him.
- *
- * The alternates are not padding. "Jarvis" is not in a general dictation
- * model's high-frequency vocabulary, and Chrome routinely returns Travis,
- * Jervis, Jarvys or Java's for a perfectly clear utterance — every one of which
- * used to be silently discarded, so the wake word "just didn't work" with no
- * indication why. Better a rare false wake than a name that does not answer.
+ * Her name, and the only wake phrase. Built in src/aurora.ts from the names
+ * and greetings in aurora/perfil.json, with guards against "a aurora" and
+ * "aurora boreal".
  */
-const WAKE =
-  /\b(?:hey|hi|ok|okay|yo|ei|oi|ol[aá]|e a[ií]|fala)?\s*(?:aurora|aurorah|aurore|arora|aurura|alrora|a urora)\b(?!'s)/i
-
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
   const m = WAKE.exec(text)
@@ -267,7 +257,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|aurora|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|para|pare|espera|chega|cancela|sil[eê]ncio|esquece|deixa pra l|n[aã]o)\b/i
+  /\b(stop|wait|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|para|pare|espera|chega|cancela|sil[eê]ncio|esquece|deixa pra l|n[aã]o)\b/i
 
 /**
  * Words too common to be evidence of anything.
@@ -299,7 +289,7 @@ const STOP = new Set(
  */
 function isEcho(heard: string, spoken: string): boolean {
   if (!spoken) return false
-  if (OVERRIDE.test(heard)) return false
+  if (OVERRIDE.test(heard) || WAKE.test(heard)) return false
 
   const all = norm(heard).split(' ').filter(Boolean)
   if (!all.length) return true
@@ -396,8 +386,8 @@ export async function startVoice(h: VoiceHandlers): Promise<Voice> {
     diag.lastError = 'mic'
     h.onError(
       err instanceof DOMException && err.name === 'NotAllowedError'
-        ? 'Microphone access denied — voice input is unavailable.'
-        : 'No microphone available.',
+        ? 'Acesso ao microfone negado — a entrada de voz está indisponível.'
+        : 'Nenhum microfone disponível.',
     )
     return { stop: () => {}, live: () => false }
   }
@@ -606,7 +596,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   const Ctor =
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
   if (!Ctor) {
-    h.onError('This browser has no speech recognition — use Chrome or Edge, or add an ElevenLabs key.')
+    h.onError('Este navegador não tem reconhecimento de voz — use o Chrome ou o Edge, ou adicione uma chave da ElevenLabs.')
     return { stop: () => {}, live: () => false }
   }
 
@@ -776,7 +766,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
         stopped = true
         diag.running = false
-        h.onError('Microphone access was refused — voice input is unavailable.')
+        h.onError('O acesso ao microfone foi recusado — a entrada de voz está indisponível.')
       }
     }
     rec.onend = () => {

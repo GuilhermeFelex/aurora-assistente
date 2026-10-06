@@ -109,7 +109,7 @@ console.log('To run AURORA, open two terminals:');
 console.log('  1)  npm run bridge      # the brain (Claude Code, headless)');
 console.log('  2)  npm run dev         # the face (open http://localhost:5173 in Chrome)');
 console.log('');
-console.log('Then click INITIALISE and say "Ei Aurora".');
+console.log('Then click INICIAR and say "Ei Aurora".');
 console.log('To let JARVIS take real actions (phone, browser, sending), run `npm run bridge:writes` instead of `npm run bridge`.');
 console.log('');
 

@@ -1,0 +1,36 @@
+{
+  "_leia": "Configuração principal da Aurora. Explicação de cada campo em aurora/README.md. Depois de editar, reinicie o npm start.",
+
+  "assistente": {
+    "nome": "Aurora"
+  },
+
+  "usuario": {
+    "nome": "Felex",
+    "tratamento": "senhor Felex",
+    "tratamentoCurto": "senhor",
+    "cidade": "São Paulo",
+    "fusoHorario": "America/Sao_Paulo"
+  },
+
+  "ativacao": {
+    "nomes": ["aurora", "aurorah", "aurore", "arora", "aurura", "alrora", "a urora"],
+    "saudacoes": ["ei", "oi", "olá", "ola", "e aí", "fala", "hey", "ok"],
+    "exigirSaudacao": false
+  },
+
+  "modelo": {
+    "nome": "claude-sonnet-5",
+    "esforco": "medium"
+  },
+
+  "voz": {
+    "preferidas": ["Maria", "Francisca", "Thalita", "Google português do Brasil"],
+    "elevenlabsVoiceId": "EXAVITQu4vr4xnSDxMaL"
+  },
+
+  "memoria": {
+    "ativa": true,
+    "limite": 200
+  }
+}

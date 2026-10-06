@@ -8,6 +8,7 @@ import {
 } from '../config'
 import * as kokoro from './kokoro'
 import { caps } from './capabilities'
+import { AURORA } from '../aurora'
 
 /**
  * Speech output.
@@ -176,6 +177,10 @@ const VOICE_PREF_KEY = 'aurora.voice'
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
+
+  // Voices named in aurora/perfil.json (voz.preferidas) win, in that order.
+  const pref = AURORA.vozes.findIndex((p) => n.includes(p.toLowerCase()))
+  if (pref >= 0) s += 300 - pref * 10
 
   // The macOS British male, and the closest thing to the character available
   // without leaving the machine.

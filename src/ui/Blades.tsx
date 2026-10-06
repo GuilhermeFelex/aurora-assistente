@@ -143,7 +143,7 @@ const CameraView = memo(function CameraView() {
       .catch((err: DOMException) =>
         failed_(
           err?.name === 'NotAllowedError'
-            ? 'Camera access is not permitted.'
+            ? 'O acesso à câmera não foi permitido.'
             : `The camera could not be opened: ${err?.message ?? err}`,
         ),
       )
@@ -179,7 +179,7 @@ const Body = memo(function Body({ blade }: { blade: Blade }) {
 
   if (blade.kind === 'embed' && blade.url) {
     const embed = embedUrl(blade.url)
-    if (!embed) return <p className="bl-note">That video link could not be played.</p>
+    if (!embed) return <p className="bl-note">Não foi possível reproduzir esse vídeo.</p>
     return (
       <iframe
         className="bl-frame"
@@ -232,7 +232,7 @@ const Body = memo(function Body({ blade }: { blade: Blade }) {
     )
   }
 
-  return <p className="bl-note">Nothing to show.</p>
+  return <p className="bl-note">Nada para mostrar.</p>
 })
 
 /* -------------------------------------------------------------------- card */
@@ -671,7 +671,7 @@ export function Blades() {
 
       {blades.length > 1 && !expandedBlade && (
         <div className="bl-hint">
-          <kbd>[</kbd> <kbd>]</kbd> cycle · <kbd>E</kbd> full · <kbd>X</kbd> close
+          <kbd>[</kbd> <kbd>]</kbd> alternar · <kbd>E</kbd> tela cheia · <kbd>X</kbd> fechar
         </div>
       )}
     </div>

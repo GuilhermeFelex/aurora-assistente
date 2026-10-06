@@ -6,16 +6,17 @@ import { BladeSweep, Blades } from './Blades'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
+import { AURORA } from '../aurora'
 
 const statusText: Record<Phase, string> = {
-  offline: 'OFFLINE',
-  boot: 'INITIALISING',
-  dormant: 'EM ESPERA — DIGA “EI AURORA”',
+  offline: 'DESLIGADA',
+  boot: 'INICIANDO',
+  dormant: `EM ESPERA — DIGA “EI ${AURORA.nome.toUpperCase()}”`,
   waking: 'ONLINE',
-  listening: 'LISTENING',
-  thinking: 'PROCESSING',
-  tooling: 'ACCESSING SYSTEMS',
-  speaking: 'RESPONDING',
+  listening: 'OUVINDO',
+  thinking: 'PROCESSANDO',
+  tooling: 'ACESSANDO SISTEMAS',
+  speaking: 'RESPONDENDO',
 }
 
 function Corner({ at }: { at: 'tl' | 'tr' | 'bl' | 'br' }) {
@@ -190,8 +191,8 @@ export function Hud() {
       <header className="hud-top">
         {ui.chrome.brand && (
           <div className="brand">
-            <span className="brand-mark">A.U.R.O.R.A.</span>
-            <span className="brand-sub">Just A Rather Very Intelligent System</span>
+            <span className="brand-mark">{AURORA.nome.toUpperCase().split('').join('.')}.</span>
+            <span className="brand-sub">Assistente pessoal de {AURORA.tratamento}</span>
           </div>
         )}
 
@@ -210,8 +211,8 @@ export function Hud() {
       {/* Left rail: which integrations are live */}
       {ui.chrome.systems && (
         <aside className="rail rail-left">
-          <div className="rail-title">SYSTEMS</div>
-          {connected.length === 0 && <div className="rail-item dim">none linked</div>}
+          <div className="rail-title">SISTEMAS</div>
+          {connected.length === 0 && <div className="rail-item dim">nenhum conectado</div>}
           {connected.map((c) => (
             <div key={c} className="rail-item">
               <span className="tick" />
@@ -227,7 +228,7 @@ export function Hud() {
 
       {/* Right rail: live telemetry, mostly for flavour */}
       <aside className="rail rail-right">
-        <div className="rail-title">SIGNAL</div>
+        <div className="rail-title">SINAL</div>
         <div className="meter">
           <div className="meter-fill" style={{ height: `${level * 100}%` }} />
         </div>
@@ -273,7 +274,7 @@ export function Hud() {
                 exit={{ opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 32 }}
               >
-                <span className="log-who">{t.role === 'user' ? 'VOCÊ' : 'AURORA'}</span>
+                <span className="log-who">{t.role === 'user' ? 'VOCÊ' : AURORA.nome.toUpperCase()}</span>
                 {/* Only his half decodes. What the user said was never
                     transmitted from anywhere — dressing it up as machine
                     output would be a lie about where the words came from. */}
@@ -312,11 +313,11 @@ export function Hud() {
 
       <footer className="hud-bottom">
         <span className="hint">
-          diga <b>“ei aurora”</b> · <kbd>Espaço</kbd> para falar · <kbd>G</kbd> hands
+          diga <b>“ei {AURORA.nome.toLowerCase()}”</b> · <kbd>Espaço</kbd> para falar · <kbd>G</kbd> mãos
           {voice && (
             <>
               {' · '}
-              <kbd>V</kbd> voice: {voice.replace(/\(.*?\)/g, '').trim()}
+              <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
             </>
           )}
         </span>

@@ -17,9 +17,14 @@
  *     so it goes at the end, and only sometimes.
  */
 
+import { AURORA } from '../aurora'
+
+/** How she addresses the user in these short lines (perfil.json → tratamentoCurto). */
+const T = AURORA.tratamentoCurto
+
 /** Said as soon as the first tool fires, before any answer exists. */
 const WORKING = [
-  'Trabalhando nisso, senhor.',
+  `Trabalhando nisso, ${T}.`,
   'Compilando.',
   'Buscando.',
   'Acessando o arquivo.',
@@ -31,21 +36,21 @@ const WORKING = [
 
 /** Acknowledging an order where no tool is involved. */
 const ACKNOWLEDGE = [
-  'Como desejar, senhor.',
-  'Muito bem, senhor.',
+  `Como desejar, ${T}.`,
+  `Muito bem, ${T}.`,
   'Certamente.',
   'Entendido.',
   'Considere feito.',
-  'Imediatamente, senhor.',
+  `Imediatamente, ${T}.`,
 ]
 
 /** Answering to his name, before the user has said what they want. */
 const ATTENTION = [
-  'Sim, senhor?',
-  'Senhor?',
-  'Às suas ordens, senhor.',
+  `Sim, ${T}?`,
+  `${T[0].toUpperCase()}${T.slice(1)}?`,
+  `Às suas ordens, ${T}.`,
   'Aguardando.',
-  'Acordada, senhor.',
+  `Acordada, ${T}.`,
 ]
 
 /**
@@ -129,7 +134,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /elevenlabs|openai-tts/,
     tool: /speech|\bvoice\b|\btts\b|text_to_sound/,
-    lines: ['Sintetizando.', 'Trabalhando nisso, senhor.'],
+    lines: ['Sintetizando.', `Trabalhando nisso, ${T}.`],
   },
   {
     server: /spotify|sonos/,
@@ -139,7 +144,7 @@ const BY_TOOL: Rule[] = [
   {
     server: /^home|homeassistant|\bhue\b|\bhass\b/,
     tool: /\blights?\b|thermostat|\bdimmer\b/,
-    lines: ['Ajustando.', 'Cuidando disso, senhor.'],
+    lines: ['Ajustando.', `Cuidando disso, ${T}.`],
   },
   {
     server: /github|linear|jira|sentry/,

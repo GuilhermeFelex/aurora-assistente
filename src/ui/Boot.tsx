@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useStore } from '../store'
+import { AURORA } from '../aurora'
 
 /**
- * The start-up sequence, rebuilt to the Iron Man boot it is quoting.
+ * The start-up sequence, in the style of a film-assistant boot.
  *
  * Four beats, in order, cyan on black:
  *   1. an angular status bar — "INITIATING SYSTEM" — over a scrolling boot log,
  *      with a segmented bar filling left to right;
- *   2. concentric reticle rings assembling inward until "J.A.R.V.I.S" resolves
+ *   2. concentric reticle rings assembling inward until her name resolves
  *      at the centre;
- *   3. the suit schematic — a wireframe figure with component call-outs;
+ *   3. her own beat — aurora curtains with voice and memory read-outs;
  *   4. the triangular arc reactor lighting from a dim outline to full glow,
  *      which is the hand-off into the live scene behind it.
  *
@@ -24,12 +25,12 @@ import { useStore } from '../store'
 const T = { rings: 2600, suit: 5200, reactor: 7200 }
 
 const LOG = [
-  'MOUNT F:/BACKUP/GHOST (HIDDEN)',
-  'EXTEND SYSTEM MEMORY .......... OK',
-  'TELEMETRY / COMP CLIMATION',
-  'REMOVE SYSTEM CONFIGURATION',
-  'CHECKSUM ...................... OK',
-  'RUN SYSTEM TOOL',
+  'CARREGANDO PERFIL ............. OK',
+  'PERSONALIDADE ................. OK',
+  'BASE DE CONHECIMENTO .......... OK',
+  'MEMÓRIA DE LONGO PRAZO ........ OK',
+  'CALIBRANDO VOZ (PT-BR) ........ OK',
+  'CONECTANDO AO CÉREBRO',
 ]
 
 type Stage = 'bar' | 'rings' | 'suit' | 'reactor'
@@ -78,7 +79,7 @@ export function Boot() {
         <div className={`boot-bar ${stage !== 'bar' ? 'boot-bar-dim' : ''}`}>
           <div className="boot-bar-frame">
             <span className="boot-bar-title">
-              INITIATING SYSTEM 1<span className="boot-dots">…</span>
+              INICIANDO SISTEMA<span className="boot-dots">…</span>
               <span className="boot-cursor" />
             </span>
             <div className="boot-seg">
@@ -103,7 +104,7 @@ export function Boot() {
         {/* ---- beats 2-4: the centre stage ---- */}
         <div className="boot-stage">
           {stage === 'rings' && <Rings reduced={!!reduced} />}
-          {stage === 'suit' && <Suit reduced={!!reduced} />}
+          {stage === 'suit' && <Aurora reduced={!!reduced} />}
           {stage === 'reactor' && <Reactor reduced={!!reduced} t={t - T.reactor} />}
         </div>
       </motion.div>
@@ -146,7 +147,7 @@ function Rings({ reduced }: { reduced: boolean }) {
         animate={{ opacity: 1, letterSpacing: '0.42em' }}
         transition={{ duration: 0.7, delay: 0.5, ease }}
       >
-        A.U.R.O.R.A
+        {AURORA.nome.toUpperCase().split('').join('.')}
       </motion.text>
     </svg>
   )
@@ -155,36 +156,62 @@ function Rings({ reduced }: { reduced: boolean }) {
 /* ------------------------------------------------------------------ beat 3 */
 
 /**
- * The suit schematic — a wireframe figure flanked by component call-outs, the
- * way the film flashes the armour blueprint mid-boot. Not the actual Mark VII
- * geometry, but the same read: a lit humanoid outline and exploded diagrams.
+ * Her own beat in place of the armour blueprint: curtains of light rising and
+ * swaying like an aurora, flanked by two read-outs — voice on one side, memory
+ * on the other. Same wireframe language as the rest of the boot.
  */
-function Suit({ reduced }: { reduced: boolean }) {
+function Aurora({ reduced }: { reduced: boolean }) {
+  // Four curtains of light: gentle sine bands, tallest in the middle.
+  const curtains = [
+    { y: -46, amp: 14, k: 0.045, ph: 0.0, dim: false, delay: 0 },
+    { y: -18, amp: 18, k: 0.038, ph: 1.3, dim: true, delay: 0.15 },
+    { y: 10, amp: 12, k: 0.05, ph: 2.1, dim: false, delay: 0.3 },
+    { y: 38, amp: 16, k: 0.034, ph: 3.4, dim: true, delay: 0.45 },
+  ]
+  const W = 140
+  const wave = (y: number, amp: number, k: number, ph: number) => {
+    const pts: string[] = []
+    for (let x = -W; x <= W; x += 5) {
+      const env = Math.cos((x / W) * (Math.PI / 2)) // fades out at both ends
+      pts.push(`${x},${(y + Math.sin(x * k + ph) * amp * env).toFixed(1)}`)
+    }
+    return `M${pts.join(' L')}`
+  }
+  // Vertical rays hanging from the curtains, longer near the centre.
+  const rays = Array.from({ length: 15 }, (_, i) => -W + 10 + i * ((2 * W - 20) / 14))
   return (
-    <svg className="boot-suit" viewBox="-200 -150 400 300">
-      <motion.g
-        className="boot-suit-fig"
-        initial={reduced ? { opacity: 1 } : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <motion.path
-          className="boot-wire"
-          d="M0,-118 C11,-118 17,-108 17,-96 C17,-86 12,-80 12,-74
-             L22,-64 L30,-30 L26,26 L34,64 L28,66 L18,30 L16,64 L20,110
-             L6,112 L2,66 L-2,66 L-6,112 L-20,110 L-16,64 L-18,30 L-28,66
-             L-34,64 L-26,26 L-30,-30 L-22,-64 L-12,-74 C-12,-80 -17,-86 -17,-96
-             C-17,-108 -11,-118 0,-118 Z"
-          initial={reduced ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 1 }}
-          transition={{ duration: 1.4, ease: 'easeInOut' }}
-        />
-        <path className="boot-wire boot-wire-dim" d="M-9,-104 L9,-104 M-8,-96 L8,-96 M0,-92 L0,-84" />
-        <circle className="boot-wire" cx="0" cy="-40" r="9" />
-        <path className="boot-wire boot-wire-dim" d="M0,-49 L0,-31 M-9,-40 L9,-40" />
-      </motion.g>
+    <svg className="boot-suit" viewBox="-230 -150 460 300">
+      <g className="boot-suit-fig">
+        {rays.map((x, i) => {
+          const h = 60 + Math.cos((x / W) * (Math.PI / 2)) * 50
+          return (
+            <motion.line
+              key={x}
+              className="boot-wire boot-wire-dim"
+              x1={x}
+              x2={x}
+              y1={70}
+              y2={70 - h}
+              style={{ originY: 1 }}
+              initial={reduced ? { opacity: 0.5 } : { opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 0.5, scaleY: 1 }}
+              transition={{ duration: 0.9, delay: 0.2 + Math.abs(i - 7) * 0.05 }}
+            />
+          )
+        })}
+        {curtains.map((c, i) => (
+          <motion.path
+            key={i}
+            className={c.dim ? 'boot-wire boot-wire-dim' : 'boot-wire'}
+            d={wave(c.y, c.amp, c.k, c.ph)}
+            initial={reduced ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 1.2, delay: c.delay, ease: 'easeInOut' }}
+          />
+        ))}
+      </g>
 
-      {[-150, 150].map((x, i) => (
+      {[-190, 190].map((x, i) => (
         <motion.g
           key={x}
           className="boot-callout"
@@ -197,12 +224,12 @@ function Suit({ reduced }: { reduced: boolean }) {
           <circle className="boot-wire" cx={x} cy="-10" r="3" />
           <path
             className="boot-wire boot-wire-dim"
-            d={x > 0 ? `M${x - 26},-10 L60,-10` : `M${x + 26},-10 L-60,-10`}
+            d={x > 0 ? `M${x - 26},-10 L${W + 8},-10` : `M${x + 26},-10 L-${W + 8},-10`}
           />
         </motion.g>
       ))}
-      <text x="-150" y="34" className="boot-tag">RT / PWR</text>
-      <text x="150" y="34" className="boot-tag">DEP / MK</text>
+      <text x="-190" y="34" className="boot-tag">VOZ / PT-BR</text>
+      <text x="190" y="34" className="boot-tag">MEMÓRIA</text>
     </svg>
   )
 }

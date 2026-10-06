@@ -189,7 +189,7 @@ function dispatch(ws: WebSocket) {
         }
       }
       if (!onCapture) {
-        reply({ error: 'The interface has no camera handler.' })
+        reply({ error: 'A interface não tem um controlador de câmera.' })
       } else {
         // Always answers, even on failure: the bridge is holding a turn open
         // waiting for this, and a rejection that never arrives is a turn that
@@ -238,7 +238,7 @@ function connect(): Promise<WebSocket> {
 
     const timer = setTimeout(() => {
       ws.close()
-      settle(new Error('Bridge not responding — is `npm run bridge` running?'))
+      settle(new Error('O cérebro não está respondendo — o `npm start` está rodando?'))
     }, 6000)
 
     ws.onopen = () => {
@@ -265,17 +265,17 @@ function connect(): Promise<WebSocket> {
        */
       settle(
         new Error(
-          `Cannot reach the bridge at ${BRIDGE_WS_URL}. Either it is not ` +
-            'running (start it with `npm start`), or this page is on a port it ' +
-            `refuses — it accepts localhost:5173-5199 and 4173-4199, and this ` +
-            `page is on ${location.port || '80'}.`,
+          `Não consegui falar com o cérebro em ${BRIDGE_WS_URL}. Ou ele não está ` +
+            'rodando (inicie com `npm start` ou "Iniciar Aurora.bat"), ou esta página está numa porta ' +
+            `que ele recusa — ele aceita localhost:5173-5199 e 4173-4199, e esta ` +
+            `página está na ${location.port || '80'}.`,
         ),
       )
     }
     ws.onclose = () => {
       // A close before open is just a failed dial; after open it's a lost
       // session, and the two want different handling.
-      settle(new Error('The bridge closed the connection.'))
+      settle(new Error('O cérebro encerrou a conexão.'))
       if (socket === ws) {
         socket = null
         onConnection?.('lost')
@@ -398,7 +398,7 @@ export async function ask(
     const arm = () => {
       clearTimeout(timer)
       timer = window.setTimeout(() => {
-        fail(new Error('The bridge went quiet — that turn was lost, sir.'))
+        fail(new Error('O cérebro ficou em silêncio — essa resposta se perdeu.'))
       }, IDLE_TIMEOUT_MS)
     }
 
@@ -454,10 +454,10 @@ export async function ask(
     }
 
     const onClose = () => {
-      fail(new Error('The bridge disconnected mid-answer — that session is gone.'))
+      fail(new Error('O cérebro desconectou no meio da resposta — essa conversa se perdeu.'))
     }
     const onError = () => {
-      fail(new Error('The connection to the bridge failed.'))
+      fail(new Error('A conexão com o cérebro falhou.'))
     }
 
     pending = { finish }

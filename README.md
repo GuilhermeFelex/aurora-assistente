@@ -8,6 +8,12 @@ O cérebro é o **Claude Code** rodando em segundo plano, usando o seu login.
 > Fork do [JARVIS](https://github.com/adewaskar/jarvis) de adewaskar (licença MIT),
 > adaptado para português do Brasil e com uma nova identidade: a Aurora.
 
+## Personalize a Aurora
+
+Personalidade, conhecimento, memória, palavras de ativação, modelo e voz ficam
+em arquivos de texto na pasta [`aurora/`](aurora/README.md). Edite, salve e
+recarregue a página.
+
 ## O que muda em relação ao JARVIS
 
 - Escuta e responde em **português do Brasil** (`pt-BR`).
@@ -15,6 +21,9 @@ O cérebro é o **Claude Code** rodando em segundo plano, usando o seu login.
 - Personagem feminina, com voz feminina em português (Microsoft Maria ou
   Google português do Brasil; no ElevenLabs, a voz padrão é a Sarah).
 - Interface, falas rápidas e sugestões traduzidas.
+- Modelo mais rápido por padrão (Sonnet, esforço médio) — dá para trocar no `perfil.json`.
+- Memória de longo prazo e base de conhecimento editáveis.
+- Não acorda por engano com "aurora boreal" ou "a aurora".
 
 ## Requisitos
 
@@ -28,13 +37,19 @@ No Windows, se o PowerShell bloquear o `npm`, rode uma vez:
 
 ## Como rodar
 
+**No Windows, o jeito mais fácil:** dê dois cliques em **`Iniciar Aurora.bat`**. Ele
+instala o que falta na primeira vez, sobe tudo e abre o Chrome sozinho. Para ter um
+ícone na área de trabalho, rode uma vez **`Criar atalho na area de trabalho.bat`**.
+
+Pelo terminal:
+
 ```bash
 npm run setup     # confere o que falta (não altera nada)
 npm install
 npm start         # sobe o cérebro e a interface juntos
 ```
 
-Abra **http://localhost:5173** no Chrome, clique em **INITIALISE**, permita o
+Abra **http://localhost:5173** no Chrome, clique em **INICIAR**, permita o
 microfone e diga **"Ei Aurora"**.
 
 | Tecla / frase | Faz |
@@ -48,7 +63,7 @@ microfone e diga **"Ei Aurora"**.
 | **T** | Teste de áudio |
 
 Por padrão ela roda em **modo somente leitura**: pesquisa e mostra, mas não envia,
-apaga nem clica em nada. `npm start -- --writes` libera ações reais — leia
+apaga nem clica em nada (a única coisa que ela grava é a própria memória). `npm start -- --writes` libera ações reais — leia
 `decideTool()` em `bridge/server.mjs` antes.
 
 As variáveis de ambiente continuam com o prefixo `JARVIS_` (por compatibilidade).

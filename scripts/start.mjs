@@ -119,7 +119,61 @@ run('bridge', 'node', ['bridge/server.mjs'], '36', bridgeEnv)
 // not need shell:true (which would break the argument handling above).
 run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
 
+const url = `http://localhost:${port || 5173}`
 console.log(
-  '\nQuando o servidor disser que está pronto, abra http://localhost:5173 no Chrome,\n' +
-    'clique em INITIALISE e diga "Ei Aurora". Ctrl-C desliga tudo.\n',
+  `\nQuando o servidor disser que está pronto, abra ${url} no Chrome,\n` +
+    'clique em INICIAR e diga "Ei Aurora". Ctrl-C desliga tudo.\n',
 )
+
+/**
+ * `--abrir` (used by "Iniciar Aurora.bat"): wait until the face actually
+ * answers, then open it in Chrome — falling back to the default browser. The
+ * first start can take twenty seconds while Vite bundles, so a fixed delay
+ * would either be too short or waste time.
+ */
+if (process.argv.includes('--abrir')) {
+  const deadline = Date.now() + 120_000
+  const tryOpen = async () => {
+    if (stopping) return
+    try {
+      const res = await fetch(url)
+      if (res.ok) return openBrowser(url)
+    } catch {
+      /* not up yet */
+    }
+    if (Date.now() < deadline) setTimeout(tryOpen, 1000)
+    else console.log(`  não consegui confirmar que a interface subiu — abra ${url} manualmente.`)
+  }
+  setTimeout(tryOpen, 1500)
+}
+
+function openBrowser(target) {
+  const open = (cmd, args) =>
+    new Promise((ok) => {
+      const p = spawn(cmd, args, {
+        stdio: 'ignore',
+        detached: true,
+        windowsHide: true,
+        // cmd's `start` needs its empty title argument passed through verbatim.
+        windowsVerbatimArguments: cmd === 'cmd',
+      })
+      p.on('error', () => ok(false))
+      p.on('exit', (code) => ok(code === 0))
+      p.unref()
+    })
+  ;(async () => {
+    let done = false
+    if (process.platform === 'win32') {
+      // `start chrome` resolves Chrome through App Paths; if it is missing,
+      // fall back to whatever browser is the default.
+      done = await open('cmd', ['/c', `start "" chrome "${target}"`])
+      if (!done) done = await open('cmd', ['/c', `start "" "${target}"`])
+    } else if (process.platform === 'darwin') {
+      done = await open('open', ['-a', 'Google Chrome', target])
+      if (!done) done = await open('open', [target])
+    } else {
+      done = await open('xdg-open', [target])
+    }
+    console.log(done ? `  abri ${target} no navegador.` : `  abra ${target} no Chrome.`)
+  })()
+}

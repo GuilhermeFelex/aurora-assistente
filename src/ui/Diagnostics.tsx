@@ -44,7 +44,7 @@ type TtsDiag = {
   lastText: string
 }
 
-const ago = (t: number) => (t ? `${((Date.now() - t) / 1000).toFixed(1)}s ago` : '—')
+const ago = (t: number) => (t ? `${((Date.now() - t) / 1000).toFixed(1)}s atrás` : '—')
 
 function Row({ k, v, bad }: { k: string; v: string; bad?: boolean }) {
   return (
@@ -92,41 +92,41 @@ export function Diagnostics() {
 
   return (
     <div className="diag" aria-live="polite">
-      <div className="diag-head">DIAGNOSTICS · D to close</div>
+      <div className="diag-head">DIAGNÓSTICO · D para fechar</div>
 
       <div className="diag-verdict">
         <span className={earsOk ? 'diag-ok' : 'diag-bad'}>
-          {earsOk ? '● hearing you' : '● not hearing you'}
+          {earsOk ? '● ouvindo você' : '● não está ouvindo você'}
         </span>
         <span className={mouthOk ? 'diag-ok' : 'diag-bad'}>
-          {mouthOk ? '● speaking' : '● no sound produced'}
+          {mouthOk ? '● falando' : '● nenhum som produzido'}
         </span>
       </div>
 
-      <div className="diag-sec">LISTENING</div>
-      <Row k="recogniser" v={v.running ? 'running' : 'STOPPED'} bad={!v.running} />
-      <Row k="sessions" v={String(v.sessions ?? 0)} />
+      <div className="diag-sec">ESCUTA</div>
+      <Row k="reconhecimento" v={v.running ? 'ativo' : 'PARADO'} bad={!v.running} />
+      <Row k="sessões" v={String(v.sessions ?? 0)} />
       <Row
-        k="silent for"
+        k="em silêncio há"
         v={`${((v.idleMs ?? 0) / 1000).toFixed(1)}s`}
         bad={(v.idleMs ?? 0) > 15000}
       />
-      <Row k="forced restarts" v={String(v.restarts ?? 0)} bad={(v.restarts ?? 0) > 0} />
-      <Row k="mode" v={`${v.mode ?? '—'} (phase ${phase})`} />
-      <Row k="accepted" v={String(v.accepted ?? 0)} bad={(v.accepted ?? 0) === 0} />
-      <Row k="wakes" v={String(v.wakes ?? 0)} />
-      <Row k="last heard" v={v.heard ? `"${v.heard}" ${ago(v.heardAt ?? 0)}` : '— nothing yet'} bad={!v.heard} />
-      <Row k="last drop" v={v.dropped || '—'} bad={Boolean(v.dropped)} />
-      <Row k="error" v={v.lastError || '—'} bad={Boolean(v.lastError)} />
+      <Row k="reinícios forçados" v={String(v.restarts ?? 0)} bad={(v.restarts ?? 0) > 0} />
+      <Row k="modo" v={`${v.mode ?? '—'} (fase ${phase})`} />
+      <Row k="aceitas" v={String(v.accepted ?? 0)} bad={(v.accepted ?? 0) === 0} />
+      <Row k="ativações" v={String(v.wakes ?? 0)} />
+      <Row k="última fala" v={v.heard ? `"${v.heard}" ${ago(v.heardAt ?? 0)}` : '— nada ainda'} bad={!v.heard} />
+      <Row k="último descarte" v={v.dropped || '—'} bad={Boolean(v.dropped)} />
+      <Row k="erro" v={v.lastError || '—'} bad={Boolean(v.lastError)} />
 
-      <div className="diag-sec">SPEAKING · press T to test</div>
-      <Row k="engine" v={String(t.engine ?? 'system')} />
-      <Row k="voice" v={String(t.voice || '—')} />
-      <Row k="handed to OS" v={String(t.spoken ?? 0)} />
-      <Row k="actually spoke" v={String(t.started ?? 0)} bad={(t.started ?? 0) === 0} />
-      <Row k="failures" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
-      <Row k="cloud rescues" v={String(t.rescued ?? 0)} />
-      <Row k="error" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
+      <div className="diag-sec">FALA · aperte T para testar</div>
+      <Row k="motor" v={String(t.engine ?? 'system')} />
+      <Row k="voz" v={String(t.voice || '—')} />
+      <Row k="enviadas ao sistema" v={String(t.spoken ?? 0)} />
+      <Row k="faladas de fato" v={String(t.started ?? 0)} bad={(t.started ?? 0) === 0} />
+      <Row k="falhas" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
+      <Row k="resgates na nuvem" v={String(t.rescued ?? 0)} />
+      <Row k="erro" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
     </div>
   )
 }

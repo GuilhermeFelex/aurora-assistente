@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../store'
+import { AURORA } from '../aurora'
 
 /**
  * Rotating example commands, shown only while idle.
@@ -13,7 +14,7 @@ import { useStore } from '../store'
  */
 const EXAMPLES = [
   'o que aconteceu com IA esta semana',
-  'gera uma imagem de uma armadura futurista',
+  'gera uma imagem de uma cidade futurista à noite',
   'qual a previsão do tempo para amanhã',
   'procura a melhor cafeteria perto de mim',
   'lê a principal notícia do dia',
@@ -50,7 +51,7 @@ export function Suggestions() {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.35 }}
         >
-          “ei aurora, {EXAMPLES[i]}”
+          “ei {AURORA.nome.toLowerCase()}, {EXAMPLES[i]}”
         </motion.span>
       </AnimatePresence>
     </div>
