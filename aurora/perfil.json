@@ -37,7 +37,7 @@
       },
       "complexa": {
         "motor": "claude",
-        "modelo": "claude-opus-5",
+        "modelo": "haiku",
         "descricao": "raciocínio difícil: análise, comparação, planejamento, código, cálculos, textos longos",
         "palavras": ["analisa", "analise", "compara", "compare", "explica em detalhe", "explique em detalhe", "passo a passo", "estratégia", "planeja", "planejamento", "código", "programa", "calcula", "revisa", "revise"],
         "minPalavras": 35
@@ -56,8 +56,8 @@
   "llama": { "modelo": "llama3.1:8b", "url": "http://127.0.0.1:11434", "ferramentas": true },
 
   "modelo": {
-    "nome": "claude-sonnet-5",
-    "esforco": "medium"
+    "nome": "haiku",
+    "esforco": "low"
   },
 
   "voz": {

@@ -93,7 +93,7 @@ já tem no computador, ou roda no próprio PC:
 | `claude` | Claude Code | sua conta do Claude (`claude` no terminal) |
 | `codex` | ChatGPT, pelo Codex. Também **gera imagens** | sua conta do ChatGPT (`codex` no terminal) |
 | `gemini` | Gemini CLI | sua conta do Google (`gemini` no terminal) |
-| `llama` | Llama rodando no seu PC, pelo [Ollama](https://ollama.com). Grátis e offline | instale o Ollama e rode `ollama pull llama3.1:8b` |
+| `llama` | Llama rodando no seu PC, pelo [Ollama](https://ollama.com). Grátis e offline | dê dois cliques em `Instalar Llama local.bat` (instala o Ollama e baixa o modelo) |
 
 No `perfil.json`, o bloco `motores` diz quem responde o quê:
 
