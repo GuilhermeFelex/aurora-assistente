@@ -21,7 +21,7 @@
 
   "motores": {
     "_leia": "Qual IA responde cada tipo de pedido. Motores: claude, codex (ChatGPT), gemini, llama (local). Veja aurora/README.md.",
-    "padrao": "gemini",
+    "padrao": "llama",
     "reserva": "claude",
     "classificador": "palavras+llama",
     "tipos": {
