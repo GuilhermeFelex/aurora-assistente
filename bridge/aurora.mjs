@@ -45,7 +45,10 @@ const DEFAULTS = {
   permissoes: { permitir: [], bloquear: [] },
   brain: { ativo: true, pasta: '~/brain-aurora', escrita: 'inbox' },
   motor: 'claude',
-  codex: { modelo: '', esforco: 'medium' },
+  motores: { padrao: null, reserva: 'claude', classificador: 'palavras', tipos: {} },
+  codex: { modelo: '', esforco: 'medium', imagens: true },
+  gemini: { modelo: '' },
+  llama: { modelo: 'llama3.1:8b', url: 'http://127.0.0.1:11434', ferramentas: true, contexto: 8192 },
 }
 
 function merge(base, over) {
@@ -449,25 +452,32 @@ export function personaPrompt(profile = loadProfile()) {
  * and a fresh conversation starts instead — yesterday's thread is what memory
  * is for.
  */
+function readSessions() {
+  try {
+    const saved = JSON.parse(readFileSync(SESSION_FILE, 'utf8'))
+    // Old single-session format: { id, at, motor? }.
+    if (typeof saved?.id === 'string') return { [saved.motor ?? 'claude']: { id: saved.id, at: saved.at } }
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Each engine keeps its own conversation: a Claude session id means nothing to Codex. */
 export function sessionToResume(profile = loadProfile(), motor = 'claude') {
   const minutes = Number(profile.conversa?.retomarMinutos ?? 60)
   if (!(minutes > 0)) return null
-  try {
-    const saved = JSON.parse(readFileSync(SESSION_FILE, 'utf8'))
-    const { id, at } = saved
-    if (typeof id !== 'string' || !id) return null
-    // A Claude session id means nothing to Codex and vice versa.
-    if ((saved.motor ?? 'claude') !== motor) return null
-    return Date.now() - Number(at) < minutes * 60_000 ? id : null
-  } catch {
-    return null
-  }
+  const entry = readSessions()[motor]
+  if (typeof entry?.id !== 'string' || !entry.id) return null
+  return Date.now() - Number(entry.at) < minutes * 60_000 ? entry.id : null
 }
 
 export function rememberSession(id, motor = 'claude') {
   try {
-    if (id) writeFileSync(SESSION_FILE, JSON.stringify({ id, at: Date.now(), motor }) + '\n', 'utf8')
-    else writeFileSync(SESSION_FILE, '{}\n', 'utf8')
+    const all = readSessions()
+    if (id) all[motor] = { id, at: Date.now() }
+    else delete all[motor]
+    writeFileSync(SESSION_FILE, JSON.stringify(all) + '\n', 'utf8')
   } catch {
     /* not being able to resume later is not worth failing a turn over */
   }
@@ -509,7 +519,20 @@ export function permissionOverride(toolName, profile = loadProfile()) {
 }
 
 /** Which engine runs her: "claude" (default) or "codex". AURORA_MOTOR overrides. */
+/** The engine used when no route applies (motores.padrao, or the older "motor"). */
 export function engineOf(profile = loadProfile()) {
-  const m = String(process.env.AURORA_MOTOR ?? profile.motor ?? 'claude').toLowerCase().trim()
-  return m === 'codex' || m === 'chatgpt' ? 'codex' : 'claude'
+  return normalizeEngine(process.env.AURORA_MOTOR ?? profile.motores?.padrao ?? profile.motor) ?? 'claude'
+}
+
+const ENGINE_ALIASES = {
+  claude: 'claude', anthropic: 'claude',
+  codex: 'codex', chatgpt: 'codex', openai: 'codex', gpt: 'codex',
+  gemini: 'gemini', google: 'gemini',
+  llama: 'llama', ollama: 'llama', local: 'llama',
+}
+
+/** "ChatGPT" → "codex", "Ollama" → "llama"; null for anything unknown. */
+export function normalizeEngine(name) {
+  const key = String(name ?? '').toLowerCase().replace(/[^a-z]/g, '')
+  return ENGINE_ALIASES[key] ?? null
 }

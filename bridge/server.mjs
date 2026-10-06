@@ -17,10 +17,7 @@
 
 import { WebSocketServer } from 'ws'
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { displayServer } from './panels.mjs'
-import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
-import { visionServer } from './vision.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -29,16 +26,16 @@ import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 import {
   AURORA_DIR,
-  engineOf,
   loadProfile,
-  memoryServer,
   permissionOverride,
   personaPrompt,
   rememberSession,
   sessionToResume,
 } from './aurora.mjs'
-import { brainEnabled, brainPrompt, brainServer } from './brain.mjs'
+import { brainEnabled, brainPrompt } from './brain.mjs'
 import { handleToolRequest } from './toolhub.mjs'
+import { runConnection } from './connection.mjs'
+import { ENGINE_LABEL, routingOf } from './router.mjs'
 
 // Secrets such as ELEVENLABS_API_KEY can live in a .env file at the project
 // root (never committed — see .gitignore). Variables already set in the shell
@@ -1021,11 +1018,17 @@ console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
 console.log(
   `[jarvis] speech ${elevenKey() ? 'via ElevenLabs (key from MCP config)' : 'using browser fallback voice'}`,
 )
-console.log(
-  engineOf(PROFILE) === 'codex'
-    ? `[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · motor Codex (ChatGPT)${PROFILE.codex?.modelo ? ` · modelo ${PROFILE.codex.modelo}` : ''}`
-    : `[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · motor Claude · modelo ${MODEL} · esforço ${EFFORT}`,
-)
+{
+  const r = routingOf(PROFILE)
+  console.log(
+    `[aurora] ${PROFILE.assistente?.nome ?? 'Aurora'} · conversa: ${ENGINE_LABEL[r.padrao]}` +
+      (r.padrao === 'claude' ? ` (${MODEL}, esforço ${EFFORT})` : '') +
+      ` · reserva: ${ENGINE_LABEL[r.reserva]}`,
+  )
+  for (const t of r.tipos) {
+    console.log(`[aurora]   ${t.nome} → ${ENGINE_LABEL[t.motor]}${t.modelo ? ` (${t.modelo})` : ''}`)
+  }
+}
 console.log(
   brainEnabled(PROFILE)
     ? '[aurora] brain-aurora conectado'
@@ -1081,39 +1084,15 @@ const RESULT_FAILURES = {
   default: 'The turn ended without an answer.',
 }
 
-wss.on('connection', async (socket) => {
-  console.log('[jarvis] client connected')
-
-  // Motor escolhido no perfil.json ("claude" ou "codex"), relido a cada conexão.
-  const connProfile = loadProfile()
-  if (engineOf(connProfile) === 'codex') {
-    PERMS_PROFILE = connProfile
-    try {
-      const { runCodexConnection } = await import('./engine-codex.mjs')
-      return runCodexConnection(socket, {
-        profile: connProfile,
-        decideTool,
-        operationalPrompt,
-        allowWrites: ALLOW_WRITES,
-        port: PORT,
-      })
-    } catch (err) {
-      console.error('[aurora] não deu para carregar o motor Codex:', err)
-      socket.send(
-        JSON.stringify({
-          type: 'error',
-          message: 'O motor Codex não carregou. Rode "npm install" e reinicie a Aurora, ou volte "motor" para "claude" no perfil.json.',
-        }),
-      )
-      return socket.close()
-    }
-  }
-
-  // Answer the HUD straight away rather than making it wait for the agent's
-  // first turn. Refined later by the real init message.
-  socket.send(
-    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS) }),
-  )
+/**
+ * The Claude engine: one long-lived Agent SDK session per connection, fed one
+ * user message per turn. Everything the page needs flows through ctx (see
+ * bridge/connection.mjs); the turn's text and tool badges go to `sink`, and
+ * run() resolves when the SDK reports the turn's single `result`.
+ */
+function createClaudeEngine(ctx) {
+  const { profile, servers, send, addUsage } = ctx
+  const withBrain = brainEnabled(profile)
 
   /** Resolves the pending user message into the SDK's input generator. */
   let deliver = null
@@ -1135,118 +1114,54 @@ wss.on('connection', async (socket) => {
       }
     }
   }
-
-  const send = (msg) => {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg))
+  const push = (text) => {
+    if (deliver) {
+      const resolve = deliver
+      deliver = null
+      resolve(text)
+    } else inbox.push(text)
   }
-
-  /**
-   * Which question the agent is currently answering.
-   *
-   * The stream carries no notion of a turn, so without this the client cannot
-   * tell the tail of an abandoned answer from the start of the new one — it
-   * attaches a listener and receives whatever is on the socket. Echoing the
-   * id the client sent lets it ignore anything that is not its own, which is
-   * the only reliable fix: no amount of waiting on this side changes what a
-   * listener over there has already heard.
-   */
-  let answering = null
-  const sendTurn = (msg) => send({ ...msg, ask: answering })
-
-  /**
-   * Asking the browser for something and waiting for the answer.
-   *
-   * Every other tool here pushes — a panel, a blade, a retint — and never needs
-   * a reply. The camera is the exception: the hardware is over there and the
-   * model is here, so a frame has to come back. Correlated by id because a turn
-   * can have more than one request in flight, and timed out because a browser
-   * that has been closed mid-question would otherwise hang the turn until the
-   * two-minute idle timer noticed.
-   */
-  const waiting = new Map()
-  let asks = 0
-
-  const ask = (kind, args, timeoutMs = 20_000) =>
-    new Promise((resolve, reject) => {
-      if (socket.readyState !== socket.OPEN) {
-        return reject(new Error('the interface is not connected'))
-      }
-      const id = `q${++asks}`
-      const timer = setTimeout(() => {
-        waiting.delete(id)
-        reject(new Error('the interface did not answer in time'))
-      }, timeoutMs)
-      waiting.set(id, { resolve, timer })
-      send({ type: kind, id, ...args })
-    })
 
   /**
    * Announcing a tool on the HUD, once, and only if it actually runs.
    *
    * A tool_use block surfaces twice — as a partial stream event and again on
-   * the completed assistant message — so ids are remembered. The harder part
-   * is timing, because a refused tool that lights the badge, plays the sound
-   * and provokes a "working on it" line, for work that never happens, reads as
-   * a bug on camera.
-   *
-   * The SDK's order is: the block starts streaming, then canUseTool is asked,
-   * then the tool runs. So nothing is known at content_block_start. Announcing
-   * from inside canUseTool would know the verdict but miss tools entirely —
-   * measured on this SDK, the callback is consulted only for calls the CLI
-   * hasn't already settled, so a `Bash: echo` its own classifier waves through
-   * never reaches us at all.
-   *
-   * So: announce immediately for anything decideTool permits, since those run.
-   * Hold the rest, and let the tool_result settle it — a refusal comes back as
-   * is_error, anything else really did execute and has earned its badge, a
-   * beat late. Nothing is ever announced for work that didn't happen.
+   * the completed assistant message — so ids are remembered. Anything
+   * decideTool permits is announced at once, since it runs; the rest is held
+   * until its tool_result says whether it really executed (a refusal comes
+   * back as is_error). Nothing is ever announced for work that didn't happen.
    */
   const seenTools = new Set()
   const heldTools = new Map()
 
   /**
-   * Resolves when the turn in flight has actually finished.
+   * The turn in flight. The SDK answers queued messages strictly in order and
+   * emits exactly one `result` per message, so a turn ends at its result.
    *
-   * Waiting on session.interrupt() alone is not enough. It resolves when the
-   * agent has been *told* to stop, not when it has, so the last tokens of the
-   * abandoned answer are still on their way — and since nothing on the wire
-   * identifies which question a delta belongs to, they land on the next turn's
-   * listener. Measured: ask for ALPHA, interrupt, ask for BRAVO, and BRAVO's
-   * answer arrives as "ALPHA\nBRAVO".
-   *
-   * The SDK emits exactly one `result` per turn, so that is the boundary worth
-   * waiting for. Raced against a timeout because a turn that never reports one
-   * must not wedge the conversation for ever — a stray word is a blemish, a
-   * deadlocked assistant is not.
+   * After an interrupt the turn is released early (the page should not wait),
+   * and whatever the SDK still emits for it — its last tokens, its result — is
+   * swallowed by counting `orphans`, so none of it lands on the next answer.
    */
-  let settling = Promise.resolve()
-  let finishTurn = null
+  let turn = null
+  let orphans = 0
+  let queue = Promise.resolve()
+  const INTERRUPT_GRACE_MS = 3000
 
-  const turnFinished = () =>
-    new Promise((resolve) => {
-      finishTurn = resolve
-    })
-
-  /**
-   * A brief pause so the abandoned turn's frames are tagged with the OLD id
-   * before the new one is adopted. Short, because correctness now comes from
-   * the tag rather than from the wait — this only has to cover the gap, not
-   * outlast the whole turn.
-   */
-  const SETTLE_CAP_MS = 400
+  const finish = (outcome) => {
+    const t = turn
+    turn = null
+    clearTimeout(t?.timer)
+    t?.resolve(outcome)
+  }
 
   const announceTool = (id, name) => {
+    if (!turn || orphans) return
     if (!name || (id && seenTools.has(id))) return
     if (id) seenTools.add(id)
-    // The display tool isn't work being done, it's the HUD drawing itself —
-    // announcing it would put "jarvis · display" in the tool badge and trigger
-    // a "working on it" filler for something already on screen.
+    // display and ui_* are the interface drawing itself, not work being done.
     if (name === 'mcp__jarvis__display') return
-    // The ui_* tools are the same case one step further: retinting the
-    // interface is the interface talking about itself, not work being done for
-    // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__jarvis_ui__')) return
-    if (decideTool(name)) return sendTurn({ type: 'tool', name })
+    if (decideTool(name)) return turn.sink.tool(name)
     if (id) heldTools.set(id, name)
   }
 
@@ -1254,62 +1169,30 @@ wss.on('connection', async (socket) => {
     const name = heldTools.get(id)
     if (name === undefined) return
     heldTools.delete(id)
-    if (!failed) sendTurn({ type: 'tool', name })
+    if (!failed && turn && !orphans) turn.sink.tool(name)
   }
 
-  // Re-read aurora/ for every connection, so edits apply on a page reload.
-  const profile = loadProfile()
-  PERMS_PROFILE = profile
-  const withBrain = brainEnabled(profile)
   // Pick the last conversation back up if it is recent (aurora/sessao.json).
-  const resumeId = sessionToResume(profile)
+  const resumeId = sessionToResume(profile, 'claude')
   let sessionStarted = false
-  // Running totals for this conversation, shown in the diagnostics panel (D).
-  const usage = {
-    respostas: 0,
-    ferramentas: 0,
-    tokensEntrada: 0,
-    tokensSaida: 0,
-    tokensCache: 0,
-    custoUsd: 0,
-    modelo: process.env.JARVIS_MODEL ?? profile.modelo?.nome ?? MODEL,
-    retomada: Boolean(resumeId),
-  }
-  if (resumeId) console.log(`[aurora] retomando a conversa ${resumeId.slice(0, 8)}…`)
+  let resumed = Boolean(resumeId)
+  const baseModel = process.env.JARVIS_MODEL ?? profile.modelo?.nome ?? MODEL
+  let activeModel = baseModel
+  if (resumeId) console.log(`[aurora] claude: retomando a conversa ${resumeId.slice(0, 8)}…`)
 
   const session = query({
     prompt: userMessages(),
     options: {
-      // Everything Claude Code has configured, plus the HUD as an in-process
-      // server. The HUD's handler closes over this socket, so a `display` call
-      // lands on screen directly — which is also why this object is built per
-      // connection rather than once.
+      // Everything Claude Code has configured, plus her own tools (shared with
+      // the other engines of this connection) as in-process servers.
       mcpServers: {
         ...MCP_SERVERS,
-        jarvis: displayServer(
-          (panel) => send({ type: 'panel', panel }),
-          (blade) => send({ type: 'blade', blade }),
-        ),
-        // The interface controls, on the same socket. A separate key because
-        // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
-        // one server; the underscore in it is why decideTool and announceTool
-        // both name `jarvis_ui` explicitly.
-        jarvis_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
-        // The user's own Chrome, over the extension's native-host socket. It
-        // holds no per-connection state, but it is built here with the rest so
-        // the write gate is read once, at the same point as everything else.
+        ...servers,
+        // The user's own Chrome, over the extension's native-host socket.
         ...(CHROME_OK ? { jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }) } : {}),
-        // The camera, which unlike everything else here has to ask and wait.
-        jarvis_eyes: visionServer(ask),
-        // Long-term memory, kept in aurora/memoria.json.
-        ...(profile.memoria?.ativa === false ? {} : { aurora_memoria: memoryServer() }),
-        // The user's Obsidian vault (perfil.json → brain).
-        ...(withBrain ? { aurora_brain: brainServer(profile) } : {}),
       },
-      // A plain system prompt, not the claude_code preset. The preset is
-      // tuned for a coding agent — verbose, file-oriented, and a large chunk
-      // of input tokens on every turn. Replacing it makes the persona stick,
-      // keeps answers short enough to speak, and cuts cost per turn.
+      // A plain system prompt, not the claude_code preset: the persona sticks,
+      // answers stay short enough to speak, and every turn costs less.
       systemPrompt:
         `${personaPrompt(profile)}\n\n` +
         (withBrain ? `${brainPrompt(profile)}\n\n` : '') +
@@ -1317,45 +1200,19 @@ wss.on('connection', async (socket) => {
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
-      // No filesystem settings at all. Left to its default the SDK loads
-      // ~/.claude/settings.json and settings.local.json exactly as the CLI
-      // does — which on a working machine means a bypassPermissions default
-      // and a pile of allow-rules for Bash. Allow-rules are matched before the
-      // permission callback, so decideTool below would never even be asked
-      // about the tools it most needs to refuse. Empty makes this bridge the
-      // only authority. It also stops the global CLAUDE.md riding along on
-      // every voice turn, carrying instructions written for a coding agent
-      // into a conversation that is meant to be two sentences long.
-      //
-      // The cost is that MCP servers stop being discovered too, which is why
-      // mcpServers above passes them in by hand.
+      // No filesystem settings: allow-rules there would be matched before
+      // canUseTool, and the global CLAUDE.md would ride along on every turn.
+      // MCP servers are passed in by hand above for the same reason.
       settingSources: [],
-      // Stated explicitly, and it has to be.
-      //
-      // With no `model` here the SDK falls back to its own default, which on
-      // this machine resolved to claude-opus-4-8[1m] — not what src/config.ts
-      // declares for the browser-direct path, and not anything anyone chose.
-      // Normally your own `/model` preference would decide, but that lives in
-      // the settings files `settingSources: []` deliberately stops loading, so
-      // without this line nothing in the project has a say at all.
       ...(resumeId ? { resume: resumeId } : {}),
-      model: process.env.JARVIS_MODEL ?? profile.modelo?.nome ?? MODEL,
+      // Stated explicitly — with settingSources empty nothing else chooses it.
+      model: baseModel,
       effort: process.env.JARVIS_EFFORT ?? profile.modelo?.esforco ?? EFFORT,
       maxTurns: 24,
       permissionMode: 'default',
-      // Without this the SDK only emits whole assistant messages, and JARVIS
-      // would sit silent until the entire answer was written. Partial events
-      // are what let speech start on the first finished sentence.
+      // Partial events are what let speech start on the first finished sentence.
       includePartialMessages: true,
-      // Signature is (toolName, input, options) and it must return a
-      // PermissionResult object. Returning a bare boolean silently denies
-      // everything, with the tool name arriving undefined.
-      //
-      // Worth knowing: this is a last gate, not the only one. Calls the CLI
-      // has already settled never arrive here — its own classifier waves
-      // through a `Bash: echo hello` without asking, and only reaches us for
-      // something with a consequence, like a `touch`. So a deny here is
-      // reliable; an absence of a call here is not proof nothing ran.
+      // Must return a PermissionResult object; a bare boolean denies everything.
       canUseTool: async (toolName) => {
         const ok = decideTool(toolName)
         console.log(`[jarvis] tool ${toolName} -> ${ok ? 'allow' : 'deny'}`)
@@ -1363,8 +1220,7 @@ wss.on('connection', async (socket) => {
           ? { behavior: 'allow' }
           : {
               behavior: 'deny',
-              // Every word of this can end up spoken, so it carries no command
-              // to read out — the persona is forbidden from saying one aloud.
+              // Every word of this can end up spoken, so it carries no command.
               message:
                 'Blocked: AURORA is running in read-only mode and cannot take' +
                 ' actions that change anything. Tell the user this action is' +
@@ -1374,7 +1230,51 @@ wss.on('connection', async (socket) => {
     },
   })
 
-  // Pump the session's output stream to the browser for as long as it lives.
+  const engine = {
+    dead: false,
+
+    run(text, { sink, route }) {
+      const job = queue.then(
+        () =>
+          new Promise((resolve) => {
+            if (engine.dead) return resolve({ error: 'A sessão do Claude foi encerrada. Tente de novo.' })
+            // A route can ask for another model for this turn (e.g. "complexa" → Opus).
+            const wanted = route?.modelo || baseModel
+            if (wanted !== activeModel && typeof session.setModel === 'function') {
+              activeModel = wanted
+              Promise.resolve(session.setModel(wanted)).catch((err) =>
+                console.warn(`[aurora] claude: não deu para trocar o modelo para ${wanted}:`, err?.message ?? err),
+              )
+            }
+            turn = { sink, resolve, text: '', timer: null }
+            push(text)
+          }),
+      )
+      queue = job.catch(() => {})
+      return job
+    },
+
+    interrupt() {
+      if (!turn) return
+      Promise.resolve(session.interrupt?.()).catch(() => {})
+      // Give the SDK a moment to close the turn itself; then let go anyway.
+      turn.timer ??= setTimeout(() => {
+        if (!turn) return
+        orphans++
+        finish({ text: turn.text, interrupted: true })
+      }, INTERRUPT_GRACE_MS)
+    },
+
+    close() {
+      closed = true
+      engine.dead = true
+      deliver?.(null)
+      session.close?.()
+      finish({ text: turn?.text ?? '', interrupted: true })
+    },
+  }
+
+  // Pump the session's output stream for as long as it lives.
   ;(async () => {
     try {
       for await (const msg of session) {
@@ -1383,190 +1283,123 @@ wss.on('connection', async (socket) => {
         }
 
         switch (msg.type) {
-          // Raw Anthropic stream events, surfaced by includePartialMessages.
-          // This is the ONLY place spoken text arrives: there is no top-level
-          // text_delta message in the SDK union and the 'assistant' message
-          // carries no deltas either. Turn includePartialMessages off and
-          // JARVIS goes completely mute.
+          // The ONLY place spoken text arrives (includePartialMessages).
           case 'stream_event': {
             const ev = msg.event
-            if (
-              ev?.type === 'content_block_delta' &&
-              ev.delta?.type === 'text_delta' &&
-              ev.delta.text
-            ) {
-              sendTurn({ type: 'text', delta: ev.delta.text })
+            if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+              if (turn && !orphans) {
+                turn.text += ev.delta.text
+                turn.sink.text(ev.delta.text)
+              }
             }
-            if (
-              ev?.type === 'content_block_start' &&
-              ev.content_block?.type === 'tool_use'
-            ) {
+            if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
               announceTool(ev.content_block.id, ev.content_block.name)
             }
             break
           }
 
           case 'assistant': {
-            // Fallback for builds that emit whole assistant messages rather
-            // than partial events. Deduped against the stream_event path.
+            // Fallback for builds that emit whole messages; deduped by id.
             for (const block of msg.content ?? msg.message?.content ?? []) {
-              if (block.type === 'tool_use') {
-                announceTool(block.id, block.name)
-              }
+              if (block.type === 'tool_use') announceTool(block.id, block.name)
             }
             break
           }
 
           case 'user': {
-            // Tool results come back as a user message. This is the only place
-            // a held announcement can be resolved: a refused tool arrives with
-            // is_error set and stays off the HUD, anything else ran.
+            // Tool results: the only place a held announcement can be resolved.
             const blocks = msg.message?.content
             if (!Array.isArray(blocks)) break
             for (const block of blocks) {
-              if (block?.type === 'tool_result') {
-                settleTool(block.tool_use_id, block.is_error === true)
-              }
+              if (block?.type === 'tool_result') settleTool(block.tool_use_id, block.is_error === true)
             }
             break
           }
 
-          case 'result':
-            // A result is not automatically a success. The error subtypes
-            // carry no `result` field at all, so reporting them as 'done' with
-            // empty text is indistinguishable from a turn that simply had
-            // nothing to say — the HUD stops spinning and JARVIS stands there
-            // silent. Say what happened instead.
-            if (msg.session_id) rememberSession(msg.session_id)
-            usage.respostas++
-            usage.ferramentas += seenTools.size
-            usage.tokensEntrada += msg.usage?.input_tokens ?? 0
-            usage.tokensSaida += msg.usage?.output_tokens ?? 0
-            usage.tokensCache +=
-              (msg.usage?.cache_read_input_tokens ?? 0) + (msg.usage?.cache_creation_input_tokens ?? 0)
-            usage.custoUsd += msg.total_cost_usd ?? 0
-            send({ type: 'usage', usage })
-            if (msg.subtype === 'success') {
-              sendTurn({
-                type: 'done',
-                text: msg.result ?? '',
-                costUsd: msg.total_cost_usd ?? null,
-              })
-            } else {
-              console.error(
-                `[jarvis] turn failed: ${msg.subtype}`,
-                msg.errors ?? '',
-              )
-              sendTurn({
-                type: 'error',
-                message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
-              })
-            }
-            // Whatever was waiting on this turn to finish can go now. This is
-            // the only place a turn is genuinely over.
-            finishTurn?.()
-            finishTurn = null
-            // One turn's tool ids are never referred to again, and these
-            // otherwise grow for as long as the socket is open.
+          case 'result': {
+            if (msg.session_id) rememberSession(msg.session_id, 'claude')
+            const tools = seenTools.size
             seenTools.clear()
             heldTools.clear()
+            if (orphans) {
+              // The result of a turn already released after an interrupt.
+              orphans--
+              break
+            }
+            addUsage('claude', {
+              respostas: 1,
+              ferramentas: tools,
+              tokensEntrada: msg.usage?.input_tokens ?? 0,
+              tokensSaida: msg.usage?.output_tokens ?? 0,
+              tokensCache:
+                (msg.usage?.cache_read_input_tokens ?? 0) + (msg.usage?.cache_creation_input_tokens ?? 0),
+              custoUsd: msg.total_cost_usd ?? 0,
+              retomada: resumed,
+              modelo: `Claude · ${activeModel}`,
+            })
+            resumed = false
+            if (msg.subtype === 'success') {
+              finish({ text: msg.result ?? turn?.text ?? '' })
+            } else if (turn?.timer) {
+              // Ended by an interrupt: not an error, just a shorter answer.
+              finish({ text: turn.text, interrupted: true })
+            } else {
+              console.error(`[jarvis] turn failed: ${msg.subtype}`, msg.errors ?? '')
+              finish({ error: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default })
+            }
             break
+          }
 
           case 'system':
             if (msg.subtype === 'init') {
               sessionStarted = true
-              if (msg.session_id) rememberSession(msg.session_id)
-              // Servers report 'pending' until first use — they connect
-              // lazily — so only drop the ones that are actually unusable.
+              if (msg.session_id) rememberSession(msg.session_id, 'claude')
               const usable = (msg.mcp_servers ?? [])
                 .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
                 .map((s) => s.name)
-              send({ type: 'ready', servers: usable })
               console.log(`[jarvis] ${usable.length} MCP servers available`)
             }
             break
         }
       }
     } catch (err) {
+      if (closed) return
       console.error('[jarvis] session error:', err)
-      // A resume that never got going (the saved session is gone or broken)
-      // would otherwise fail the same way on every reconnect. Forget it.
-      if (resumeId && !sessionStarted) rememberSession(null)
-      send({ type: 'error', message: String(err?.message ?? err) })
-      // The stream is finished either way — nothing will ever be read from it
-      // again. Leaving the socket open would leave the client believing it has
-      // a working bridge, and every later question would hang for ever waiting
-      // on a pump that has already stopped. Close it so it reconnects.
+      // A resume that never got going would fail the same way every time.
+      if (resumeId && !sessionStarted) rememberSession(null, 'claude')
+      // This session cannot take another turn; the connection builds a new one.
+      engine.dead = true
       closed = true
       deliver?.(null)
-      session.close?.()
-      socket.close()
+      finish({ error: String(err?.message ?? err) })
     }
   })()
 
-  socket.on('message', (raw) => {
-    let msg
-    try {
-      msg = JSON.parse(raw.toString())
-    } catch {
-      return
-    }
+  return engine
+}
 
-    if (msg.type === 'ask' && typeof msg.text === 'string') {
-      /**
-       * Queued behind any interrupt that is still settling.
-       *
-       * A barge-in is two messages in quick succession — interrupt, then the
-       * new question — and session.interrupt() is asynchronous. Delivering the
-       * question the instant it arrives means the agent can still be winding
-       * down the previous turn, so its last tokens are emitted after the new
-       * one has begun and land on the new turn's listener. Measured: ask "one",
-       * interrupt, ask "two", and the answer to "two" comes back as "One."
-       *
-       * Waiting costs nothing when nothing is interrupting — the chain is an
-       * already-resolved promise — and removes the cross-talk when there is.
-       */
-      const text = msg.text
-      const id = typeof msg.id === 'string' ? msg.id : null
-      void settling.then(() => {
-        answering = id
-        if (deliver) {
-          const resolve = deliver
-          deliver = null
-          resolve(text)
-        } else {
-          inbox.push(text)
-        }
-      })
-    }
+const ENGINE_FACTORIES = {
+  claude: (ctx) => createClaudeEngine(ctx),
+  codex: async (ctx) => (await import('./engine-codex.mjs')).createCodexEngine(ctx),
+  gemini: async (ctx) => (await import('./engine-gemini.mjs')).createGeminiEngine(ctx),
+  llama: async (ctx) => (await import('./engine-llama.mjs')).createLlamaEngine(ctx),
+}
 
-    if (msg.type === 'reply' && typeof msg.id === 'string') {
-      const slot = waiting.get(msg.id)
-      if (slot) {
-        waiting.delete(msg.id)
-        clearTimeout(slot.timer)
-        slot.resolve(msg)
-      }
-    }
-
-    if (msg.type === 'interrupt') {
-      // Held so the next question can wait for it rather than racing it.
-      const stopped = turnFinished()
-      settling = Promise.resolve(session.interrupt?.())
-        .catch(() => {})
-        .then(() =>
-          Promise.race([
-            stopped,
-            new Promise((r) => setTimeout(r, SETTLE_CAP_MS)),
-          ]),
-        )
-    }
-  })
-
-  socket.on('close', () => {
-    console.log('[jarvis] client disconnected')
-    closed = true
-    deliver?.(null)
-    session.close?.()
+wss.on('connection', (socket) => {
+  console.log('[jarvis] client connected')
+  // Re-read aurora/ for every connection, so edits apply on a page reload.
+  const profile = loadProfile()
+  PERMS_PROFILE = profile
+  runConnection(socket, {
+    profile,
+    decideTool,
+    operationalPrompt,
+    allowWrites: ALLOW_WRITES,
+    port: PORT,
+    factories: ENGINE_FACTORIES,
+    readyServers: [
+      ...Object.keys(MCP_SERVERS),
+      ...(brainEnabled(profile) ? ['brain-aurora'] : []),
+    ],
   })
 })

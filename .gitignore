@@ -34,3 +34,4 @@ aurora/memoria.migrada.json
 aurora/sessao.json
 aurora/aurora.log
 aurora/**/*.privado.md
+aurora/.motores/

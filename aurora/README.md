@@ -35,8 +35,8 @@ abra no Bloco de Notas, no VS Code ou no Cursor, edite e salve.
     "exigirSaudacao": false                    // true = só acorda com "ei aurora", nunca só "aurora"
   },
 
-  "motor": "claude",                          // "claude" (Claude Code) ou "codex" (ChatGPT) — veja abaixo
-  "codex": { "modelo": "", "esforco": "medium" }, // só vale com o motor codex; modelo vazio = o padrão do Codex
+  "motores": { ... },                         // qual IA responde cada tipo de pedido — veja "Motores" abaixo
+  "codex": { ... }, "gemini": { ... }, "llama": { ... }, // opções de cada motor
 
   "modelo": {
     "nome": "claude-sonnet-5",                 // "claude-opus-5" = mais inteligente, porém mais lento
@@ -83,24 +83,65 @@ Cada regra é o nome de uma integração ou um padrão com `*`:
 Exemplo: `"permitir": ["spotify"], "bloquear": ["mcp__spotify__apagar*"]` deixa ela
 tocar música mesmo no modo somente leitura, mas nunca apagar playlists.
 
-## Motor: Claude ou ChatGPT (Codex)
+## Motores: qual IA responde cada tipo de pedido
 
-A Aurora pode pensar com dois "cérebros", os dois **sem chave de API** — cada um usa
-o login que você já tem no computador:
+A Aurora usa várias IAs, **nenhuma com chave de API**. Cada uma usa um login que você
+já tem no computador, ou roda no próprio PC:
 
-| `"motor"` | Usa | Login |
+| Motor | O que é | Como entrar |
 |---|---|---|
-| `"claude"` (padrão) | Claude Code | sua conta do Claude |
-| `"codex"` | Codex (ChatGPT) | sua conta do ChatGPT — rode `codex` no terminal uma vez para entrar |
+| `claude` | Claude Code | sua conta do Claude (`claude` no terminal) |
+| `codex` | ChatGPT, pelo Codex. Também **gera imagens** | sua conta do ChatGPT (`codex` no terminal) |
+| `gemini` | Gemini CLI | sua conta do Google (`gemini` no terminal) |
+| `llama` | Llama rodando no seu PC, pelo [Ollama](https://ollama.com). Grátis e offline | instale o Ollama e rode `ollama pull llama3.1:8b` |
 
-Para trocar: mude `"motor"` no `perfil.json` e reinicie com `Iniciar Aurora.bat`.
-Tudo continua igual — voz, personalidade, memória, brain-aurora, painéis, câmera.
-Diferenças com o Codex:
+No `perfil.json`, o bloco `motores` diz quem responde o quê:
 
-- A resposta chega inteira de uma vez, então ela começa a falar um pouco depois.
-- As integrações extras dele vêm do `~/.codex/config.toml` (as do Claude, do `~/.claude.json`).
-- O contador de uso mostra tokens, não custo (o ChatGPT não informa valor por conversa).
-- Por segurança ele roda em modo somente leitura, a não ser que a Aurora seja iniciada com `--writes`.
+```jsonc
+"motores": {
+  "padrao": "gemini",                  // conversa do dia a dia (quando nenhum tipo se aplica)
+  "reserva": "claude",                 // usado quando o motor escolhido não está disponível
+  "classificador": "palavras+llama",   // "palavras" = só palavras-chave; "+llama" = o Llama local decide os casos duvidosos (grátis)
+  "tipos": {
+    "imagem":   { "motor": "codex",  "palavras": ["gera uma imagem", "desenha", ...] },
+    "web":      { "motor": "codex",  "palavras": ["pesquis", "notícia", "previsão do tempo", ...] },
+    "complexa": { "motor": "claude", "modelo": "claude-opus-5", "palavras": ["analisa", "passo a passo", ...], "minPalavras": 35 },
+    "rapida":   { "motor": "llama",  "palavras": ["bom dia", "que horas", ...], "maxPalavras": 8 }
+  }
+}
+```
+
+Como ela decide, do jeito mais barato para o mais caro:
+
+1. **Você manda:** "pergunta pro Gemini…", "usa o ChatGPT…", "pelo Claude…" — vale na hora.
+2. **Palavras-chave** de cada tipo, na ordem em que os tipos estão escritos. Sem ligar
+   para acentos e maiúsculas, e a palavra pode ser só o começo ("pesquis" pega
+   "pesquisa" e "pesquisar"). `maxPalavras` limita o tipo a pedidos curtos.
+3. **Tamanho:** `minPalavras` manda pedidos longos para aquele tipo (ex.: complexa).
+4. **Classificador local:** com `"palavras+llama"`, o Llama do seu PC lê o pedido e
+   escolhe o tipo, usando a `descricao` de cada um. Não gasta nada de nenhuma assinatura.
+5. Se nada disso decidir, vai para o `padrao`.
+
+Você pode criar quantos tipos quiser (ex.: `"codigo"`, `"traducao"`), com qualquer motor.
+`modelo` e `esforco` num tipo trocam o modelo só para aquele tipo de pedido.
+
+Quando o motor muda no meio da conversa, o novo recebe um resumo das últimas trocas
+que ele não viu, então a conversa continua de onde parou. Se o motor escolhido não
+estiver instalado, logado ou ligado, a **reserva** responde no lugar, e aquele motor fica
+de fora por 5 minutos. No terminal aparece qual motor respondeu cada pedido
+(`[aurora] web → ChatGPT (Codex) · por palavra`).
+
+Opções de cada motor:
+
+- `codex`: `modelo`, `esforco`, `imagens` (true = pode gerar imagens; elas aparecem na tela sozinhas)
+- `gemini`: `modelo` (vazio = automático), `caminho` (só se o `gemini` não for encontrado sozinho)
+- `llama`: `modelo` (o nome no Ollama), `url`, `ferramentas` (memória, cofre e interface), `contexto`
+- `claude`: continua no bloco `modelo`
+
+Diferenças práticas: o ChatGPT entrega a resposta inteira de uma vez, então ela começa a
+falar um pouco depois. O Llama não acessa a internet. As integrações extras vêm da
+configuração de cada programa (`~/.claude.json`, `~/.codex/config.toml`,
+`~/.gemini/settings.json`).
 
 ## brain-aurora (Obsidian)
 

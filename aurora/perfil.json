@@ -19,8 +19,41 @@
     "exigirSaudacao": false
   },
 
-  "motor": "claude",
-  "codex": { "modelo": "", "esforco": "medium" },
+  "motores": {
+    "_leia": "Qual IA responde cada tipo de pedido. Motores: claude, codex (ChatGPT), gemini, llama (local). Veja aurora/README.md.",
+    "padrao": "gemini",
+    "reserva": "claude",
+    "classificador": "palavras+llama",
+    "tipos": {
+      "imagem": {
+        "motor": "codex",
+        "descricao": "criar ou gerar uma imagem, desenho, ilustração ou logo",
+        "palavras": ["gera uma imagem", "gerar uma imagem", "gere uma imagem", "gera imagem", "cria uma imagem", "criar uma imagem", "crie uma imagem", "faz uma imagem", "faça uma imagem", "desenha", "desenhe", "ilustração", "ilustra", "logotipo", "papel de parede", "wallpaper"]
+      },
+      "web": {
+        "motor": "codex",
+        "descricao": "informação atual da internet: notícias, preços, clima, resultados, lançamentos",
+        "palavras": ["pesquis", "procur", "busca", "buscar", "na internet", "na web", "no google", "notícia", "cotação", "previsão do tempo", "clima", "temperatura", "preço", "quanto custa", "resultado do jogo", "placar", "lançamento"]
+      },
+      "complexa": {
+        "motor": "claude",
+        "modelo": "claude-opus-5",
+        "descricao": "raciocínio difícil: análise, comparação, planejamento, código, cálculos, textos longos",
+        "palavras": ["analisa", "analise", "compara", "compare", "explica em detalhe", "explique em detalhe", "passo a passo", "estratégia", "planeja", "planejamento", "código", "programa", "calcula", "revisa", "revise"],
+        "minPalavras": 35
+      },
+      "rapida": {
+        "motor": "llama",
+        "descricao": "bate-papo curto: cumprimentos, agradecimentos, horas, piadas",
+        "palavras": ["que horas", "que dia é", "bom dia", "boa tarde", "boa noite", "obrigad", "valeu", "tudo bem", "piada", "beleza"],
+        "maxPalavras": 8
+      }
+    }
+  },
+
+  "codex": { "modelo": "", "esforco": "medium", "imagens": true },
+  "gemini": { "modelo": "" },
+  "llama": { "modelo": "llama3.1:8b", "url": "http://127.0.0.1:11434", "ferramentas": true },
 
   "modelo": {
     "nome": "claude-sonnet-5",

@@ -9,6 +9,10 @@
  * tools. Those tools still run here in the bridge; Codex reaches them through
  * bridge/mcp-proxy.mjs (a stdio MCP server it spawns) and bridge/toolhub.mjs.
  *
+ * It can also draw: with "codex.imagens" on, Codex's own image generation is
+ * enabled, and every picture it saves under ~/.codex/generated_images during
+ * a turn is opened on a blade.
+ *
  * Differences worth knowing:
  *   - Codex hands over each reply when it is complete, so she starts speaking
  *     a little later than with Claude (no token-by-token stream).
@@ -18,16 +22,14 @@
  */
 
 import { Codex } from '@openai/codex-sdk'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { displayServer } from './panels.mjs'
-import { uiServer } from './ui.mjs'
-import { visionServer } from './vision.mjs'
-import { memoryServer, personaPrompt, rememberSession, sessionToResume } from './aurora.mjs'
-import { brainEnabled, brainPrompt, brainServer } from './brain.mjs'
-import { registerTools } from './toolhub.mjs'
+import { personaPrompt, rememberSession, sessionToResume } from './aurora.mjs'
+import { brainEnabled, brainPrompt } from './brain.mjs'
 
-const PROXY = fileURLToPath(new URL('./mcp-proxy.mjs', import.meta.url))
+export const PROXY = fileURLToPath(new URL('./mcp-proxy.mjs', import.meta.url))
 
 /** Windows caps a command line at 32 767 characters; the instructions ride on it. */
 const MAX_INLINE_INSTRUCTIONS = 24_000
@@ -101,6 +103,7 @@ export function createTranslator({ sendTurn, serverOf, onThread, onUsage }) {
   }
 }
 
+
 const NOT_LOGGED_IN =
   'O Codex não está logado neste computador. Rode "codex" no terminal uma vez e entre com a sua conta do ChatGPT.'
 
@@ -109,55 +112,52 @@ export function explainError(message) {
   const msg = String(message ?? '')
   if (/401|unauthori[sz]ed|not logged in|login|sign in|authentication/i.test(msg)) return NOT_LOGGED_IN
   if (/ENOENT|spawn/i.test(msg)) return 'Não encontrei o programa do Codex. Rode "npm install" na pasta da Aurora e reinicie.'
-  if (/usage limit|rate limit|429/i.test(msg)) return 'Atingimos o limite de uso do ChatGPT por enquanto. Tente de novo mais tarde, ou volte o motor para "claude".'
+  if (/usage limit|rate limit|429/i.test(msg)) return 'Atingimos o limite de uso do ChatGPT por enquanto. Tente de novo mais tarde.'
   return msg
 }
 
-export function runCodexConnection(socket, deps) {
-  const { profile, decideTool, operationalPrompt, allowWrites, port } = deps
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif)$/i
 
-  const send = (msg) => {
-    if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg))
+/** Pictures written under `dir` after `since` (ms), newest last. */
+export async function imagesSince(dir, since, depth = 3) {
+  const found = []
+  const walk = async (d, level) => {
+    let entries
+    try {
+      entries = await readdir(d, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const full = join(d, e.name)
+      if (e.isDirectory() && level < depth) await walk(full, level + 1)
+      else if (e.isFile() && IMAGE_EXT.test(e.name)) {
+        try {
+          const info = await stat(full)
+          if (info.mtimeMs >= since) found.push({ full, at: info.mtimeMs })
+        } catch {
+          /* gone already */
+        }
+      }
+    }
   }
-  let answering = null
-  const sendTurn = (msg) => send({ ...msg, ask: answering })
+  await walk(dir, 0)
+  return found.sort((a, b) => a.at - b.at).map((f) => f.full)
+}
 
-  // The camera asks the page for a frame and waits — same protocol as Claude.
-  const waiting = new Map()
-  let asks = 0
-  const ask = (kind, args, timeoutMs = 20_000) =>
-    new Promise((resolve, reject) => {
-      if (socket.readyState !== socket.OPEN) return reject(new Error('the interface is not connected'))
-      const id = `q${++asks}`
-      const timer = setTimeout(() => {
-        waiting.delete(id)
-        reject(new Error('the interface did not answer in time'))
-      }, timeoutMs)
-      waiting.set(id, { resolve, timer })
-      send({ type: kind, id, ...args })
-    })
-
-  // Her tools, registered on the hub for the proxy to reach.
+export function createCodexEngine(ctx) {
+  const { profile, hub, send, decideTool, operationalPrompt, allowWrites, port, addUsage } = ctx
   const withBrain = brainEnabled(profile)
-  const servers = {
-    jarvis: displayServer(
-      (panel) => send({ type: 'panel', panel }),
-      (blade) => send({ type: 'blade', blade }),
-    ),
-    jarvis_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
-    jarvis_eyes: visionServer(ask),
-    ...(profile.memoria?.ativa === false ? {} : { aurora_memoria: memoryServer() }),
-    ...(withBrain ? { aurora_brain: brainServer(profile) } : {}),
-  }
-  const hub = registerTools(servers, decideTool)
-
   const instructions =
     `${personaPrompt(profile)}\n\n` + (withBrain ? `${brainPrompt(profile)}\n\n` : '') + operationalPrompt(false)
   const inline = instructions.length <= MAX_INLINE_INSTRUCTIONS
+  const drawing = profile.codex?.imagens !== false
+  const codexHome = process.env.CODEX_HOME || join(homedir(), '.codex')
 
   const codex = new Codex({
     config: {
       ...(inline ? { developer_instructions: instructions } : {}),
+      ...(drawing ? { features: { image_generation: true } } : {}),
       mcp_servers: {
         aurora: {
           command: process.execPath,
@@ -169,8 +169,9 @@ export function runCodexConnection(socket, deps) {
       },
     },
   })
+  void decideTool
 
-  const threadOptions = {
+  const baseOptions = {
     ...(profile.codex?.modelo ? { model: profile.codex.modelo } : {}),
     modelReasoningEffort: profile.codex?.esforco || 'medium',
     sandboxMode: allowWrites ? 'workspace-write' : 'read-only',
@@ -181,121 +182,114 @@ export function runCodexConnection(socket, deps) {
   }
 
   const resumeId = sessionToResume(profile, 'codex')
-  let thread = resumeId ? codex.resumeThread(resumeId, threadOptions) : codex.startThread(threadOptions)
+  let threadId = resumeId
   let resumed = Boolean(resumeId)
   let primed = inline || resumed
   if (resumeId) console.log(`[aurora] codex: retomando a conversa ${resumeId.slice(0, 8)}…`)
 
-  const usage = {
-    respostas: 0,
-    ferramentas: 0,
-    tokensEntrada: 0,
-    tokensSaida: 0,
-    tokensCache: 0,
-    custoUsd: 0,
-    modelo: `codex${profile.codex?.modelo ? ` · ${profile.codex.modelo}` : ''}`,
-    retomada: resumed,
+  // A route can ask for another model or effort for one turn; the thread is the same.
+  const threadFor = (route) => {
+    const opts = {
+      ...baseOptions,
+      ...(route?.modelo ? { model: route.modelo } : {}),
+      ...(route?.esforco ? { modelReasoningEffort: route.esforco } : {}),
+    }
+    return threadId ? codex.resumeThread(threadId, opts) : codex.startThread(opts)
   }
-
-  send({ type: 'ready', servers: ['codex', ...(withBrain ? ['brain-aurora'] : [])] })
-  console.log(`[aurora] motor codex (ChatGPT) · sandbox ${threadOptions.sandboxMode}`)
 
   let current = null
-  let chain = Promise.resolve()
-  let closed = false
 
-  const runTurn = async (text, id, retry = true) => {
-    answering = id
-    const ctl = new AbortController()
-    current = ctl
-    const translator = createTranslator({
-      sendTurn,
-      serverOf: hub.serverOf,
-      onThread: (tid) => rememberSession(tid, 'codex'),
-      onUsage: (u) => {
-        usage.respostas++
-        usage.tokensEntrada += u?.input_tokens ?? 0
-        usage.tokensSaida += (u?.output_tokens ?? 0) + (u?.reasoning_output_tokens ?? 0)
-        usage.tokensCache += u?.cached_input_tokens ?? 0
-      },
-    })
-    const input = primed ? text : `${instructions}\n\n# Primeira mensagem do usuário\n\n${text}`
-    let started = false
-    let settled = false
-    let failure = null
-    try {
-      const { events } = await thread.runStreamed(input, { signal: ctl.signal })
-      for await (const ev of events) {
-        if (ev.type?.startsWith('item.') || ev.type === 'turn.completed') started = true
-        if (ev.type === 'item.started' && ev.item?.type === 'mcp_tool_call') usage.ferramentas++
-        const outcome = translator.handle(ev)
-        if (outcome === 'done') {
-          primed = true
-          resumed = false
-          settled = true
-          send({ type: 'usage', usage })
-          sendTurn({ type: 'done', text: translator.finalText, costUsd: null })
-        } else if (outcome?.error) {
-          // One error ends the turn on the page; keep the first and report it once.
-          failure ??= outcome.error
+  const engine = {
+    dead: false,
+    interrupt() {
+      current?.abort()
+    },
+    close() {
+      current?.abort()
+    },
+    async run(text, { sink, route }, retry = true) {
+      const ctl = new AbortController()
+      current = ctl
+      const startedAt = Date.now() - 1000
+      let tools = 0
+      const translator = createTranslator({
+        sendTurn: (frame) => (frame.type === 'text' ? sink.text(frame.delta) : sink.tool(frame.name)),
+        serverOf: hub.serverOf,
+        onThread: (tid) => {
+          threadId = tid
+          rememberSession(tid, 'codex')
+        },
+        onUsage: (u) =>
+          addUsage('codex', {
+            respostas: 1,
+            ferramentas: tools,
+            tokensEntrada: u?.input_tokens ?? 0,
+            tokensSaida: (u?.output_tokens ?? 0) + (u?.reasoning_output_tokens ?? 0),
+            tokensCache: u?.cached_input_tokens ?? 0,
+            retomada: resumed,
+            modelo: `ChatGPT (Codex${route?.modelo || profile.codex?.modelo ? ` · ${route?.modelo || profile.codex.modelo}` : ''})`,
+          }),
+      })
+      const input = primed ? text : `${instructions}\n\n# Primeira mensagem do usuário\n\n${text}`
+      let started = false
+      let failure = null
+      let done = false
+      try {
+        const thread = threadFor(route)
+        const { events } = await thread.runStreamed(input, { signal: ctl.signal })
+        for await (const ev of events) {
+          if (ev.type?.startsWith('item.') || ev.type === 'turn.completed') started = true
+          if (ev.type === 'item.started' && ev.item?.type === 'mcp_tool_call') tools++
+          const outcome = translator.handle(ev)
+          if (outcome === 'done') {
+            done = true
+            primed = true
+            resumed = false
+          } else if (outcome?.error) failure ??= outcome.error
         }
+      } catch (err) {
+        if (ctl.signal.aborted) return { text: translator.finalText, interrupted: true }
+        if (resumed && !started && retry) {
+          console.warn('[aurora] codex: não deu para retomar a conversa; começando outra.')
+          rememberSession(null, 'codex')
+          threadId = null
+          resumed = false
+          primed = inline
+          return engine.run(text, { sink, route }, false)
+        }
+        failure ??= String(err?.message ?? err)
+      } finally {
+        if (current === ctl) current = null
       }
-      if (!settled) {
-        settled = true
-        if (failure) {
-          console.error('[aurora] codex: turno falhou:', failure)
-          sendTurn({ type: 'error', message: explainError(failure) })
-        } else sendTurn({ type: 'done', text: translator.finalText, costUsd: null })
-      }
-    } catch (err) {
-      if (settled) {
-        /* already answered */
-      } else if (ctl.signal.aborted) {
-        // Barge-in: settle the abandoned question so its listener lets go.
-        sendTurn({ type: 'done', text: translator.finalText, costUsd: null })
-      } else if (resumed && !started && retry) {
-        // The saved conversation is gone — start a fresh one and try again.
-        console.warn('[aurora] codex: não deu para retomar a conversa; começando outra.')
-        rememberSession(null)
-        resumed = false
-        primed = inline
-        thread = codex.startThread(threadOptions)
-        return runTurn(text, id, false)
-      } else {
-        console.error('[aurora] codex: erro no turno:', failure ?? err?.message ?? err)
-        sendTurn({ type: 'error', message: explainError(failure ?? err?.message ?? err) })
-      }
-    } finally {
-      if (current === ctl) current = null
-    }
+      if (drawing) await showImages(startedAt)
+      if (done) return { text: translator.finalText }
+      if (ctl.signal.aborted) return { text: translator.finalText, interrupted: true }
+      const message = explainError(failure ?? 'O Codex terminou sem resposta.')
+      console.error('[aurora] codex: turno falhou:', failure)
+      // Missing program or no sign-in: let the reserve engine answer instead.
+      const missing = message === NOT_LOGGED_IN || /Não encontrei o programa/.test(message)
+      return missing && !translator.finalText ? { unavailable: true, message } : { error: message }
+    },
   }
 
-  socket.on('message', (raw) => {
-    let msg
-    try {
-      msg = JSON.parse(raw.toString())
-    } catch {
-      return
-    }
-    if (msg.type === 'ask' && typeof msg.text === 'string') {
-      const id = typeof msg.id === 'string' ? msg.id : null
-      chain = chain.then(() => (closed ? null : runTurn(msg.text, id))).catch(() => {})
-    }
-    if (msg.type === 'reply' && typeof msg.id === 'string') {
-      const slot = waiting.get(msg.id)
-      if (slot) {
-        waiting.delete(msg.id)
-        clearTimeout(slot.timer)
-        slot.resolve(msg)
-      }
-    }
-    if (msg.type === 'interrupt') current?.abort()
-  })
+  async function showImages(since) {
+    const files = await imagesSince(join(codexHome, 'generated_images'), since)
+    if (!files.length) return
+    const latest = files.slice(-8)
+    send({
+      type: 'blade',
+      blade: {
+        id: `img${Date.now().toString(36)}`,
+        title: 'IMAGEM',
+        kind: latest.length > 1 ? 'gallery' : 'image',
+        url: latest.length > 1 ? undefined : latest[0],
+        images: latest.length > 1 ? latest : undefined,
+        mode: 'reader',
+        size: 'wide',
+        hold: 'sticky',
+      },
+    })
+  }
 
-  socket.on('close', () => {
-    console.log('[jarvis] client disconnected')
-    closed = true
-    current?.abort()
-    hub.close()
-  })
+  return engine
 }

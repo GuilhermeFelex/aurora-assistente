@@ -53,6 +53,42 @@ function jsonSchemaOf(def) {
   }
 }
 
+/** The tools of one registration, as MCP describes them. */
+export function listRegistered(token) {
+  const session = sessions.get(token)
+  if (!session) return null
+  return [...session.tools].map(([name, { def }]) => ({
+    name,
+    description: def.description ?? '',
+    inputSchema: jsonSchemaOf(def),
+  }))
+}
+
+const failure = (text) => ({ isError: true, content: [{ type: 'text', text }] })
+
+/** Runs one tool behind the permission gate; always resolves to an MCP tool result. */
+export async function callRegistered(token, name, rawArgs) {
+  const session = sessions.get(token)
+  if (!session) return failure('Sessão encerrada.')
+  const entry = session.tools.get(String(name ?? ''))
+  if (!entry) return failure('Ferramenta desconhecida.')
+  if (!session.decide(`mcp__${entry.server}__${name}`)) {
+    return failure('Bloqueado pelas permissões da Aurora (modo somente leitura ou perfil.json).')
+  }
+  let args
+  try {
+    args = z.parse(entry.def.inputSchema, rawArgs ?? {})
+  } catch (err) {
+    const why = err?.issues?.map((i) => `${i.path?.join('.') || 'argumento'}: ${i.message}`).join('; ')
+    return failure(`Argumentos inválidos: ${why || err}`)
+  }
+  try {
+    return (await entry.def.handler(args, {})) ?? { content: [] }
+  } catch (err) {
+    return failure(String(err?.message ?? err))
+  }
+}
+
 const reply = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify(body))
@@ -83,14 +119,7 @@ export async function handleToolRequest(req, res) {
   const session = sessions.get(m[1])
   if (!session) return reply(res, 404, { error: 'unknown session' }), true
 
-  if (m[2] === 'list' && req.method === 'GET') {
-    const list = [...session.tools].map(([name, { def }]) => ({
-      name,
-      description: def.description ?? '',
-      inputSchema: jsonSchemaOf(def),
-    }))
-    return reply(res, 200, list), true
-  }
+  if (m[2] === 'list' && req.method === 'GET') return reply(res, 200, listRegistered(m[1])), true
 
   if (m[2] === 'call' && req.method === 'POST') {
     let body
@@ -99,33 +128,7 @@ export async function handleToolRequest(req, res) {
     } catch {
       return reply(res, 400, { error: 'bad request' }), true
     }
-    const entry = session.tools.get(String(body?.name ?? ''))
-    if (!entry) {
-      return reply(res, 200, { isError: true, content: [{ type: 'text', text: 'Ferramenta desconhecida.' }] }), true
-    }
-    const full = `mcp__${entry.server}__${body.name}`
-    if (!session.decide(full)) {
-      return (
-        reply(res, 200, {
-          isError: true,
-          content: [{ type: 'text', text: 'Bloqueado pelas permissões da Aurora (modo somente leitura ou perfil.json).' }],
-        }),
-        true
-      )
-    }
-    let args
-    try {
-      args = z.parse(entry.def.inputSchema, body.arguments ?? {})
-    } catch (err) {
-      const why = err?.issues?.map((i) => `${i.path?.join('.') || 'argumento'}: ${i.message}`).join('; ')
-      return reply(res, 200, { isError: true, content: [{ type: 'text', text: `Argumentos inválidos: ${why || err}` }] }), true
-    }
-    try {
-      const result = await entry.def.handler(args, {})
-      return reply(res, 200, result ?? { content: [] }), true
-    } catch (err) {
-      return reply(res, 200, { isError: true, content: [{ type: 'text', text: String(err?.message ?? err) }] }), true
-    }
+    return reply(res, 200, await callRegistered(m[1], body?.name, body?.arguments)), true
   }
 
   return reply(res, 405, { error: 'method not allowed' }), true

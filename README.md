@@ -5,9 +5,10 @@ navegador. Você diz **"Ei Aurora"**, ela acorda, escuta e responde — pesquisa
 web, mostra imagens, vídeos e notícias na tela e controla a própria interface.
 O cérebro é o **Claude Code** rodando em segundo plano, usando o seu login.
 
-Prefere o ChatGPT? Troque `"motor": "claude"` por `"motor": "codex"` em `aurora/perfil.json`:
-ela passa a pensar com o **Codex**, usando o seu login do ChatGPT — também sem chave de API
-(rode `codex` no terminal uma vez para entrar). Detalhes em [`aurora/README.md`](aurora/README.md).
+Ela também pode dividir o trabalho entre **Claude, ChatGPT (Codex), Gemini e Llama local**,
+cada uma com o seu próprio login e sem chave de API: imagens e pesquisa na web pelo ChatGPT,
+perguntas complexas pelo Claude, conversa pelo Gemini, cumprimentos pelo Llama do seu PC.
+Você escolhe no bloco `motores` do `aurora/perfil.json`. Detalhes em [`aurora/README.md`](aurora/README.md).
 
 > Fork do [JARVIS](https://github.com/adewaskar/jarvis) de adewaskar (licença MIT),
 > adaptado para português do Brasil e com uma nova identidade: a Aurora.

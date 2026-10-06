@@ -26,20 +26,25 @@ before(async () => {
 })
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-test('engineOf escolhe o motor pelo perfil (e aceita "chatgpt")', () => {
+test('engineOf escolhe o motor padrão pelo perfil (e aceita apelidos)', () => {
   assert.equal(aurora.engineOf({}), 'claude')
   assert.equal(aurora.engineOf({ motor: 'codex' }), 'codex')
   assert.equal(aurora.engineOf({ motor: ' ChatGPT ' }), 'codex')
+  assert.equal(aurora.engineOf({ motores: { padrao: 'Ollama' } }), 'llama')
+  assert.equal(aurora.engineOf({ motores: { padrao: 'gemini' }, motor: 'codex' }), 'gemini')
   assert.equal(aurora.engineOf({ motor: 'qualquer' }), 'claude')
 })
 
-test('a conversa salva de um motor não é retomada pelo outro', () => {
+test('cada motor guarda e retoma a própria conversa', () => {
   aurora.rememberSession('thread-codex', 'codex')
   assert.equal(aurora.sessionToResume(undefined, 'codex'), 'thread-codex')
   assert.equal(aurora.sessionToResume(undefined, 'claude'), null)
   aurora.rememberSession('sessao-claude')
   assert.equal(aurora.sessionToResume(), 'sessao-claude')
+  assert.equal(aurora.sessionToResume(undefined, 'codex'), 'thread-codex')
+  aurora.rememberSession(null, 'codex')
   assert.equal(aurora.sessionToResume(undefined, 'codex'), null)
+  assert.equal(aurora.sessionToResume(), 'sessao-claude')
   aurora.rememberSession(null)
 })
 
